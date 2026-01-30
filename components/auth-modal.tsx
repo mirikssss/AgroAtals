@@ -4,11 +4,11 @@ import React from "react"
 
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { X } from 'lucide-react'
+// X icon removed - using built-in DialogContent close button
 
 export function AuthModal() {
   const { showAuthModal, setShowAuthModal, login, signup, authMode, setAuthMode } = useAuth()
@@ -56,16 +56,14 @@ export function AuthModal() {
     <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
       <DialogContent className="sm:max-w-[400px] bg-card border border-border">
         <DialogHeader>
-          <button
-            onClick={() => setShowAuthModal(false)}
-            className="absolute right-4 top-4 rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
-          >
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </button>
-          <h2 className="text-lg font-semibold text-foreground">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {authMode === 'signin' ? 'Sign In' : 'Create Account'}
-          </h2>
+          </DialogTitle>
+          <DialogDescription className="text-muted-foreground text-sm">
+            {authMode === 'signin' 
+              ? 'Enter your credentials to access your account' 
+              : 'Create a new account to get started'}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">

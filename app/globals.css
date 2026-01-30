@@ -4,79 +4,128 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.98 0.001 0);
-  --foreground: oklch(0.2 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0 0);
-  --primary: oklch(0.45 0.12 150);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.5 0.08 120);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.92 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.6 0.15 40);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.93 0 0);
-  --input: oklch(0.96 0 0);
-  --ring: oklch(0.45 0.12 150);
-  --chart-1: oklch(0.45 0.12 150);
-  --chart-2: oklch(0.5 0.08 120);
-  --chart-3: oklch(0.6 0.15 40);
-  --chart-4: oklch(0.52 0.1 135);
-  --chart-5: oklch(0.48 0.09 160);
+  /* ========================================
+     UNIFIED DESIGN SYSTEM - AgroAtlas
+     Primary Brand Color: #10B981 (Emerald-500)
+     ======================================== */
+  
+  /* BRAND COLORS - THE ONLY GREEN */
+  --brand: #10B981;
+  --brand-hover: #059669;
+  --brand-light: #D1FAE5;
+  --brand-rgb: 16, 185, 129;
+  
+  /* RISK COLORS */
+  --risk-high: #EF4444;
+  --risk-moderate: #F59E0B;
+  --risk-low: #10B981;
+  
+  /* SEMANTIC COLORS */
+  --background: #F9FAFB;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #10B981;
+  --primary-foreground: #FFFFFF;
+  --secondary: #6B7280;
+  --secondary-foreground: #FFFFFF;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #10B981;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #F9FAFB;
+  --ring: #10B981;
+  
+  /* CHART COLORS */
+  --chart-1: #10B981;
+  --chart-2: #3B82F6;
+  --chart-3: #F59E0B;
+  --chart-4: #8B5CF6;
+  --chart-5: #EC4899;
+  
   --radius: 0.625rem;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.2 0 0);
-  --sidebar-primary: oklch(0.45 0.12 150);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.5 0.08 120);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.93 0 0);
-  --sidebar-ring: oklch(0.45 0.12 150);
+  
+  /* SIDEBAR */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #10B981;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D1FAE5;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #10B981;
 }
 
 .dark {
-  --background: oklch(0.15 0.01 260);
-  --foreground: oklch(0.95 0.01 0);
-  --card: oklch(0.2 0.02 260);
-  --card-foreground: oklch(0.95 0.01 0);
-  --popover: oklch(0.2 0.02 260);
-  --popover-foreground: oklch(0.95 0.01 0);
-  --primary: oklch(0.62 0.18 150);
-  --primary-foreground: oklch(0.1 0 0);
-  --secondary: oklch(0.58 0.12 120);
-  --secondary-foreground: oklch(0.95 0.01 0);
-  --muted: oklch(0.3 0.01 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.7 0.18 40);
-  --accent-foreground: oklch(0.1 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.95 0 0);
-  --border: oklch(0.3 0.01 0);
-  --input: oklch(0.25 0.01 0);
-  --ring: oklch(0.62 0.18 150);
-  --chart-1: oklch(0.62 0.18 150);
-  --chart-2: oklch(0.58 0.12 120);
-  --chart-3: oklch(0.7 0.18 40);
-  --chart-4: oklch(0.60 0.15 135);
-  --chart-5: oklch(0.58 0.12 160);
-  --sidebar: oklch(0.15 0.01 260);
-  --sidebar-foreground: oklch(0.95 0.01 0);
-  --sidebar-primary: oklch(0.62 0.18 150);
-  --sidebar-primary-foreground: oklch(0.1 0 0);
-  --sidebar-accent: oklch(0.58 0.12 120);
-  --sidebar-accent-foreground: oklch(0.95 0.01 0);
-  --sidebar-border: oklch(0.3 0.01 0);
-  --sidebar-ring: oklch(0.62 0.18 150);
+  /* BRAND COLORS - Same green, brighter for dark mode */
+  --brand: #10B981;
+  --brand-hover: #34D399;
+  --brand-light: rgba(16, 185, 129, 0.15);
+  
+  /* RISK COLORS */
+  --risk-high: #F87171;
+  --risk-moderate: #FBBF24;
+  --risk-low: #34D399;
+  
+  /* SEMANTIC COLORS */
+  --background: #111827;
+  --foreground: #F9FAFB;
+  --card: #1F2937;
+  --card-foreground: #F9FAFB;
+  --popover: #1F2937;
+  --popover-foreground: #F9FAFB;
+  --primary: #10B981;
+  --primary-foreground: #FFFFFF;
+  --secondary: #4B5563;
+  --secondary-foreground: #F9FAFB;
+  --muted: #374151;
+  --muted-foreground: #9CA3AF;
+  --accent: #10B981;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #374151;
+  --input: #1F2937;
+  --ring: #10B981;
+  
+  /* CHART COLORS */
+  --chart-1: #34D399;
+  --chart-2: #60A5FA;
+  --chart-3: #FBBF24;
+  --chart-4: #A78BFA;
+  --chart-5: #F472B6;
+  
+  /* SIDEBAR */
+  --sidebar: #111827;
+  --sidebar-foreground: #F9FAFB;
+  --sidebar-primary: #10B981;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: rgba(16, 185, 129, 0.15);
+  --sidebar-accent-foreground: #F9FAFB;
+  --sidebar-border: #374151;
+  --sidebar-ring: #10B981;
 }
 
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  
+  /* Brand Colors */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-light: var(--brand-light);
+  
+  /* Risk Colors */
+  --color-risk-high: var(--risk-high);
+  --color-risk-moderate: var(--risk-moderate);
+  --color-risk-low: var(--risk-low);
+  
+  /* Semantic Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -96,15 +145,21 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  
+  /* Chart Colors */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  
+  /* Radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  
+  /* Sidebar */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -121,5 +176,15 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Brand Shadow Utility */
+@layer utilities {
+  .shadow-brand {
+    box-shadow: 0 4px 14px 0 rgba(var(--brand-rgb), 0.25);
+  }
+  .shadow-brand-lg {
+    box-shadow: 0 10px 25px -3px rgba(var(--brand-rgb), 0.3);
   }
 }

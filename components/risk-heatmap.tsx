@@ -65,7 +65,7 @@ export function RiskHeatmap({ onRegionClick }: HeatmapProps) {
       case 'Biotic':
         return 'bg-purple-500 hover:bg-purple-600'
       case 'Normal':
-        return 'bg-green-500 hover:bg-green-600'
+        return 'bg-[#10B981] hover:bg-[#059669]'
       default:
         return 'bg-gray-300'
     }
@@ -159,9 +159,9 @@ export function RiskHeatmap({ onRegionClick }: HeatmapProps) {
                 <div className="text-xs font-semibold text-muted-foreground">
                   {region.riskCategory === 'High' && <span className="text-red-600">High</span>}
                   {region.riskCategory === 'Biotic' && <span className="text-purple-600">Biotic</span>}
-                  {region.riskCategory === 'Normal' && <span className="text-green-600">Normal</span>}
+                  {region.riskCategory === 'Normal' && <span className="text-[#10B981]">Normal</span>}
                 </div>
-                <p className={`text-xs font-medium ${region.yieldAnomaly < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                <p className={`text-xs font-medium ${region.yieldAnomaly < 0 ? 'text-red-600' : 'text-[#10B981]'}`}>
                   {region.yieldAnomaly > 0 ? '+' : ''}{region.yieldAnomaly}% yield
                 </p>
               </div>
@@ -188,7 +188,7 @@ export function RiskHeatmap({ onRegionClick }: HeatmapProps) {
           <span className="text-muted-foreground">Biotic Stress</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-green-500" />
+          <div className="w-3 h-3 rounded-full bg-[#10B981]" />
           <span className="text-muted-foreground">Normal</span>
         </div>
       </div>

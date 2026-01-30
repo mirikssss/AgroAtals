@@ -179,7 +179,7 @@ export function ProfilePopup({ user, onLogout }: ProfilePopupProps) {
                     onClick={() => setRiskAlerts(!riskAlerts)}
                     className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                       riskAlerts
-                        ? 'bg-green-500/20 text-green-700 dark:text-green-400'
+                        ? 'bg-[#10B981]/20 text-[#10B981] dark:text-[#34D399]'
                         : 'bg-muted text-muted-foreground'
                     }`}
                   >
@@ -223,7 +223,7 @@ export function ProfilePopup({ user, onLogout }: ProfilePopupProps) {
           </DialogHeader>
           <div className="space-y-4">
             {passwordSuccess && (
-              <div className="p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
+              <div className="p-3 rounded-md bg-[#10B981]/10 text-[#10B981] dark:text-[#34D399] text-sm">
                 Password updated successfully!
               </div>
             )}

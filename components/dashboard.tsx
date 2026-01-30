@@ -30,6 +30,7 @@ import { ProfilePopup } from '@/components/profile-popup'
 import { InteractiveRiskMap } from '@/components/interactive-risk-map'
 import { DashboardKPI } from '@/components/dashboard-kpi'
 import { GeographicHeatmap } from '@/components/geographic-heatmap'
+import { AnalyticsModule } from '@/components/analytics-module'
 
 const sampleNDVIData = [
   { month: 'Jan', ndvi: 0.3, expected: 0.35 },
@@ -219,7 +220,7 @@ function PortfolioSection() {
                     {field.risk === 'High' ? (
                       <TrendingDown className="w-4 h-4 text-red-600" />
                     ) : (
-                      <TrendingUp className="w-4 h-4 text-green-600" />
+                      <TrendingUp className="w-4 h-4 text-[#10B981]" />
                     )}
                     <span className="font-mono text-foreground">{field.risk === 'High' ? '-5.2' : '-2.1'}%</span>
                   </div>
@@ -439,8 +440,8 @@ function AnalyticsSection() {
           <Card className="bg-gradient-to-br from-primary/5 to-primary/0 border border-primary/20 shadow-sm p-8 lg:col-span-1">
             <div className="flex items-start justify-between mb-6">
               <h3 className="text-xl font-semibold text-foreground">Analysis Results</h3>
-              <div className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
-                <span className="text-xs font-semibold text-green-600">Complete</span>
+              <div className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20">
+                <span className="text-xs font-semibold text-[#10B981]">Complete</span>
               </div>
             </div>
 
@@ -608,7 +609,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && <DashboardOverview />}
         {activeTab === 'portfolio' && <PortfolioSection />}
-        {activeTab === 'analytics' && <AnalyticsSection />}
+        {activeTab === 'analytics' && <AnalyticsModule />}
         {activeTab === 'fields' && <div className="space-y-8">
           <div>
             <h2 className="text-3xl font-bold text-foreground">{t('yourFields')}</h2>

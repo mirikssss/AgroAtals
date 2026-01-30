@@ -252,7 +252,7 @@ export function CentralAsiaMap({ onLocationSelect, initialLocation }: MapSelecti
 
               {/* Current selection indicator */}
               {hoveredRegion && (
-                <circle cx="475" cy="510" r="35" fill="none" stroke="#22c55e" strokeWidth="3" strokeDasharray="5,5" />
+                <circle cx="475" cy="510" r="35" fill="none" stroke="#10B981" strokeWidth="3" strokeDasharray="5,5" />
               )}
             </svg>
           </div>

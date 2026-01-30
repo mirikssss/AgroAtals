@@ -125,7 +125,7 @@ export function GeographicHeatmap() {
       case 'Biotic':
         return '#a855f7'
       case 'Normal':
-        return '#22c55e'
+        return '#10B981'
       default:
         return '#9ca3af'
     }
@@ -328,7 +328,7 @@ export function GeographicHeatmap() {
           <span className="text-muted-foreground">Biotic Stress</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded" style={{ backgroundColor: '#22c55e' }} />
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: '#10B981' }} />
           <span className="text-muted-foreground">Normal</span>
         </div>
       </div>

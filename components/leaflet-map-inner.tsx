@@ -124,7 +124,7 @@ export function LeafletMapInner({
     const isSelected = areaName === selectedArea
     
     return {
-      fillColor: '#4ade80', // green-400 - uniform green for all
+      fillColor: '#10B981', // brand green - uniform for all
       weight: isHovered || isSelected ? 2 : 1,
       opacity: 1,
       color: isHovered || isSelected ? '#1e40af' : '#9ca3af', // blue when hovered, gray-400 otherwise

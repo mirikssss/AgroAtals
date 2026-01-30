@@ -84,7 +84,7 @@ export function SVGRegionMap() {
       case 'medium':
         return '#f97316' // orange
       case 'low':
-        return '#22c55e' // green
+        return '#10B981' // brand green
     }
   }
 
@@ -145,7 +145,7 @@ export function SVGRegionMap() {
             <span className="text-foreground">Medium Risk</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-500" />
+            <div className="w-4 h-4 rounded bg-[#10B981]" />
             <span className="text-foreground">Low Risk</span>
           </div>
         </div>
@@ -165,7 +165,7 @@ export function SVGRegionMap() {
                 <p className="text-muted-foreground">Yield Anomaly</p>
                 <p
                   className={`font-medium ${
-                    selectedRegionData.yieldAnomaly < 0 ? 'text-red-600' : 'text-green-600'
+                    selectedRegionData.yieldAnomaly < 0 ? 'text-red-600' : 'text-[#10B981]'
                   }`}
                 >
                   {selectedRegionData.yieldAnomaly > 0 ? '+' : ''}

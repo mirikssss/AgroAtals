@@ -1,5 +1,5 @@
 import React from "react"
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
@@ -7,17 +7,18 @@ import './globals.css'
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: '#5a8c4f',
+}
+
 export const metadata: Metadata = {
   title: 'AgroAtlas | Agricultural Risk Intelligence Platform',
   description: 'Field-level agricultural risk insights for banks, insurers, and agri-finance professionals. Analyze crop risks with satellite data and AI-powered recommendations.',
   generator: 'v0.app',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
-    themeColor: '#5a8c4f',
-  },
   icons: {
     icon: [
       {

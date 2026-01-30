@@ -27,7 +27,7 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 import { AlertTriangle, TrendingUp, TrendingDown, Gauge, MapPin, Satellite, BarChart3, Download, Settings, LogOut, AlertCircle, CheckCircle, Plus, Bell } from 'lucide-react'
 import { CentralAsiaMap } from '@/components/central-asia-map'
 import { ProfilePopup } from '@/components/profile-popup'
-import { SVGRegionMap } from '@/components/svg-region-map'
+import { InteractiveRiskMap } from '@/components/interactive-risk-map'
 import { DashboardKPI } from '@/components/dashboard-kpi'
 import { GeographicHeatmap } from '@/components/geographic-heatmap'
 
@@ -80,22 +80,11 @@ const sampleFields = [
 
 function DashboardOverview() {
   const { t } = useLanguage()
-  const [selectedRegion, setSelectedRegion] = useState<any>(null)
 
   return (
-    <div className="space-y-6">
-      {/* Main Dashboard Layout - 60/40 Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-6 h-[600px]">
-        {/* Map Section (60%) */}
-        <div className="w-full min-h-[600px]">
-          <SVGRegionMap />
-        </div>
-
-        {/* KPI Section (40%) */}
-        <div className="w-full">
-          <DashboardKPI portfolioVaR={2500000} />
-        </div>
-      </div>
+    <div className="h-[calc(100vh-200px)] min-h-[600px]">
+      {/* Interactive Risk Map with KPI Cards (66/33 split) */}
+      <InteractiveRiskMap />
     </div>
   )
 }
@@ -585,7 +574,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
 
           {/* Navigation Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="bg-transparent border-b-0 rounded-none h-auto gap-4 p-0 w-full justify-start">
+            <TabsList className="bg-transparent border-b-0 rounded-none h-auto gap-4 p-0 pb-4 w-full justify-start">
               <TabsTrigger
                 value="dashboard"
                 className="rounded-lg px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-200 hover:text-foreground hover:bg-muted/50 border-0 shadow-none"

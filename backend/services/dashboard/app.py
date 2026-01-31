@@ -1,11 +1,34 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
 import json
+
+
+def _suppress_cancelled_error_filter(record: logging.LogRecord) -> bool:
+    """Suppress ERROR logs from asyncio.CancelledError during uvicorn --reload shutdown."""
+    if record.levelno < logging.ERROR:
+        return True
+    if record.exc_info and record.exc_info[0] is not None:
+        exc_type = record.exc_info[0]
+        if exc_type is asyncio.CancelledError:
+            return False
+        # Chain: CancelledError can wrap KeyboardInterrupt
+        if exc_type is KeyboardInterrupt:
+            return False
+    if "CancelledError" in (record.getMessage() or ""):
+        return False
+    return True
+
+
+for _name in ("uvicorn.error", "uvicorn"):
+    _log = logging.getLogger(_name)
+    _log.addFilter(_suppress_cancelled_error_filter)
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query

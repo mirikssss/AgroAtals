@@ -143,11 +143,30 @@ const analysisSteps = [
   { id: 5, text: 'Generating risk assessment...', icon: AlertTriangle },
 ]
 
+const DASHBOARD_API_URL = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
+
+// Base yield (t/ha) by crop for revenue calculation when using model's yield anomaly
+const BASE_YIELD_T_HA: Record<string, number> = {
+  wheat: 3.0,
+  cotton: 2.5,
+  rice: 4.0,
+  corn: 5.0,
+}
+
+// Map backend risk_category to UI risk category
+function mapRiskCategory(apiCategory: string): 'LOW' | 'MODERATE' | 'HIGH' {
+  const v = (apiCategory || '').toLowerCase()
+  if (v === 'low') return 'LOW'
+  if (v === 'high' || v === 'moderate_high') return 'HIGH'
+  return 'MODERATE'
+}
+
 export function AnalyticsModule() {
   const { t } = useLanguage()
   const [phase, setPhase] = useState<AnalysisPhase>('input')
   const [currentStep, setCurrentStep] = useState(0)
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   
   // Form State
   const [loanParams, setLoanParams] = useState<LoanParams>({
@@ -189,55 +208,90 @@ export function AnalyticsModule() {
     }
   }
 
-  // Run Analysis
+  // Run Analysis: call prediction model API with user input (crop, year), then build result from API + loan params
   const runAnalysis = async () => {
     setPhase('analyzing')
     setCurrentStep(0)
+    setAnalysisError(null)
 
-    // Simulate progressive loading
-    for (let i = 0; i < analysisSteps.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      setCurrentStep(i + 1)
+    const year = new Date().getFullYear()
+    const crop = (loanParams.crop || 'wheat').toLowerCase()
+    const hectares = parseFloat(loanParams.hectares) || 150
+    const loanAmount = parseFloat(loanParams.loanAmount) || 500000
+    const interestRate = parseFloat(loanParams.interestRate) || 12
+    const termYears = parseFloat(loanParams.termYears) || 5
+
+    // Step 1: call prediction API with user's crop and current year
+    setCurrentStep(1)
+    let apiData: {
+      riskScore: number
+      valueAtRisk: string
+      yieldAnomaly: string
+      p10: number
+      p50: number
+      p90: number
+      spread: number
+      confidenceLabel: string
+      riskCategory: string
+    } | null = null
+
+    try {
+      const url = new URL('/dashboard/metrics', DASHBOARD_API_URL)
+      url.searchParams.set('country', 'UZB')
+      url.searchParams.set('year', String(year))
+      url.searchParams.set('crop', crop)
+      url.searchParams.set('scope', 'country')
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        throw new Error(`API ${res.status}: ${await res.text().catch(() => '')}`)
+      }
+      apiData = await res.json()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Dashboard API unavailable'
+      setAnalysisError(
+        msg.includes('fetch') || msg.includes('Failed')
+          ? 'Prediction service unavailable. Start the backend: cd backend/services/dashboard && uvicorn app:app --port 8000'
+          : msg
+      )
+      setPhase('input')
+      return
     }
 
-    // Generate mock results based on drawn area
-    const hectares = parseFloat(loanParams.hectares) || 150
-    const yieldPerHa = 3.2 + (Math.random() - 0.5) // t/ha
-    const pricePerTon = loanParams.crop === 'cotton' ? 1200 : loanParams.crop === 'wheat' ? 280 : 350
-    const expectedRevenue = hectares * yieldPerHa * pricePerTon
+    // Steps 2–5: show progress
+    for (let i = 2; i <= analysisSteps.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 400))
+      setCurrentStep(i)
+    }
 
-    const { dscr, annualDebtService } = calculateDSCR(
-      parseFloat(loanParams.loanAmount) || 500000,
-      parseFloat(loanParams.interestRate) || 12,
-      parseFloat(loanParams.termYears) || 5,
-      expectedRevenue
-    )
+    // Parse model output: yield anomaly is p50 (%), use it to get predicted yield (t/ha)
+    const yieldAnomalyPct = apiData.p50
+    const baseYield = BASE_YIELD_T_HA[crop] ?? 3.0
+    const predictedYieldTHa = baseYield * (1 + yieldAnomalyPct / 100)
+    const pricePerTon = crop === 'cotton' ? 1200 : crop === 'wheat' ? 280 : crop === 'rice' ? 350 : 350
+    const expectedRevenue = hectares * predictedYieldTHa * pricePerTon
 
-    // Generate risk based on coordinates (mock - in real app would query satellite data)
-    const riskScore = Math.random()
-    let riskCategory: 'LOW' | 'MODERATE' | 'HIGH' = 'MODERATE'
-    if (riskScore < 0.35) riskCategory = 'LOW'
-    else if (riskScore > 0.65) riskCategory = 'HIGH'
+    const { dscr, annualDebtService } = calculateDSCR(loanAmount, interestRate, termYears, expectedRevenue)
 
-    const anomaly = -5 + Math.random() * 10 - 5 // -10 to 0
-    
-    // Get location name from coordinates
+    const riskCategory = mapRiskCategory(apiData.riskCategory)
+    const trendDynamics: 'Improving' | 'Stable' | 'Declining' =
+      yieldAnomalyPct < -5 ? 'Declining' : yieldAnomalyPct > 2 ? 'Improving' : 'Stable'
+
     const bounds = loanParams.drawnArea?.bounds
     const centerLat = bounds ? ((bounds.north + bounds.south) / 2).toFixed(4) : '41.3775'
     const centerLng = bounds ? ((bounds.east + bounds.west) / 2).toFixed(4) : '64.5853'
     const locationName = `Field ${centerLat}°N, ${centerLng}°E`
-    
+
     setResult({
-      predictedYield: yieldPerHa,
-      yieldAnomaly: anomaly,
+      predictedYield: predictedYieldTHa,
+      yieldAnomaly: yieldAnomalyPct,
       riskCategory,
-      trendDynamics: anomaly < -5 ? 'Declining' : anomaly > 2 ? 'Improving' : 'Stable',
-      ndviSlope: anomaly < 0 ? -0.015 : 0.008,
-      htcIndex: 0.6 + Math.random() * 0.4,
-      confidenceSpread: 0.3 + Math.random() * 0.3,
-      p10: yieldPerHa - 0.6,
-      p50: yieldPerHa,
-      p90: yieldPerHa + 0.5,
+      trendDynamics,
+      ndviSlope: yieldAnomalyPct < 0 ? -0.012 : 0.008,
+      htcIndex: apiData.riskScore < 0.5 ? 0.75 : 0.5 + apiData.riskScore * 0.3,
+      confidenceSpread: apiData.spread,
+      p10: apiData.p10,
+      p50: apiData.p50,
+      p90: apiData.p90,
       dscr,
       annualDebtService,
       expectedRevenue,
@@ -246,7 +300,7 @@ export function AnalyticsModule() {
       district: locationName,
     })
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 300))
     setPhase('results')
   }
 
@@ -255,6 +309,7 @@ export function AnalyticsModule() {
     setPhase('input')
     setResult(null)
     setCurrentStep(0)
+    setAnalysisError(null)
   }
 
   return (
@@ -266,6 +321,7 @@ export function AnalyticsModule() {
           onInputChange={handleInputChange}
           onAreaDrawn={handleAreaDrawn}
           onAnalyze={runAnalysis}
+          analysisError={analysisError}
         />
       )}
 
@@ -294,9 +350,10 @@ interface InputPhaseProps {
   onInputChange: (field: keyof LoanParams, value: string) => void
   onAreaDrawn: (area: DrawnArea | null) => void
   onAnalyze: () => void
+  analysisError?: string | null
 }
 
-function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze }: InputPhaseProps) {
+function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysisError }: InputPhaseProps) {
   const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
 
   return (
@@ -429,6 +486,14 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze }: Input
         </div>
       </Card>
 
+      {/* API error message */}
+      {analysisError && (
+        <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+          <strong>Analysis unavailable</strong>
+          <p className="mt-1">{analysisError}</p>
+        </div>
+      )}
+
       {/* Analyze Button */}
       <Button
         onClick={onAnalyze}
@@ -544,7 +609,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
     heat_stress_days_proxy: Math.floor(Math.random() * 10),
     elevation: 400,
     slope: 2,
-    predictedYield: result.p50,
+    predictedYield: result.predictedYield,
     yieldAnomaly: result.yieldAnomaly,
     htcIndex: result.htcIndex,
     dscr: result.dscr,
@@ -644,8 +709,8 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
         {/* Row 1 */}
         <MetricCard
           title="Predicted Yield"
-          value={`${result.p50.toFixed(1)} t/ha`}
-          subtitle="p50 Forecast"
+          value={`${result.predictedYield.toFixed(1)} t/ha`}
+          subtitle={`Yield anomaly p50: ${result.p50 > 0 ? '+' : ''}${result.p50.toFixed(1)}%`}
           icon={<Target className="w-5 h-5" />}
           color="primary"
         />
@@ -685,7 +750,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
         <MetricCard
           title="Confidence"
           value={`±${result.confidenceSpread.toFixed(1)}`}
-          subtitle={`Range: ${result.p10.toFixed(1)} - ${result.p90.toFixed(1)}`}
+          subtitle={`Anomaly range: ${result.p10.toFixed(1)}% - ${result.p90.toFixed(1)}%`}
           icon={<Activity className="w-5 h-5" />}
           color="primary"
         />

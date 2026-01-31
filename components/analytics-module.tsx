@@ -643,14 +643,14 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
       <div className="grid grid-cols-3 gap-4">
         {/* Row 1 */}
         <MetricCard
-          title="A. Predicted Yield"
+          title="Predicted Yield"
           value={`${result.p50.toFixed(1)} t/ha`}
           subtitle="p50 Forecast"
           icon={<Target className="w-5 h-5" />}
           color="primary"
         />
         <MetricCard
-          title="B. Yield Anomaly"
+          title="Yield Anomaly"
           value={`${result.yieldAnomaly > 0 ? '+' : ''}${result.yieldAnomaly.toFixed(1)}%`}
           subtitle="vs 5-year average"
           icon={result.yieldAnomaly < -10 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
@@ -658,7 +658,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
           highlight={result.yieldAnomaly < -10}
         />
         <MetricCard
-          title="C. Risk Category"
+          title="Risk Category"
           value={result.riskCategory}
           subtitle="Satellite-derived"
           icon={<AlertTriangle className="w-5 h-5" />}
@@ -668,14 +668,14 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
 
         {/* Row 2 */}
         <MetricCard
-          title="D. Trend Dynamics"
+          title="Trend Dynamics"
           value={result.trendDynamics}
           subtitle={`NDVI slope: ${result.ndviSlope > 0 ? '+' : ''}${result.ndviSlope.toFixed(3)}`}
           icon={result.trendDynamics === 'Declining' ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
           color={result.trendDynamics === 'Declining' ? 'orange' : 'green'}
         />
         <MetricCard
-          title="E. Climate Stress"
+          title="Climate Stress"
           value={`HTC ${result.htcIndex.toFixed(2)}`}
           subtitle={result.htcIndex < 0.7 ? 'Drought Signal' : 'Normal'}
           icon={<Thermometer className="w-5 h-5" />}
@@ -683,7 +683,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
           highlight={result.htcIndex < 0.7}
         />
         <MetricCard
-          title="F. Confidence"
+          title="Confidence"
           value={`±${result.confidenceSpread.toFixed(1)}`}
           subtitle={`Range: ${result.p10.toFixed(1)} - ${result.p90.toFixed(1)}`}
           icon={<Activity className="w-5 h-5" />}

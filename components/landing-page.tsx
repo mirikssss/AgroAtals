@@ -25,42 +25,52 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Navigation */}
-      <nav className="border-b border-border/30 bg-card/50 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Satellite className="w-5 h-5 text-primary-foreground" />
+      {/* Hero block: same background image + overlay for header and hero */}
+      <div className="relative flex flex-col min-h-[109vh] overflow-hidden">
+        {/* Background image — stretches over header + hero */}
+        <div
+          className="absolute inset-0 bg-cover bg-no-repeat"
+          style={{ backgroundImage: 'url(/bg.jpg)', backgroundPosition: 'center calc(50% - 20px)' }}
+        />
+        {/* Black overlay 30% */}
+        <div className="absolute inset-0 bg-black/30" aria-hidden />
+
+        {/* Navigation — transparent, so hero image shows through */}
+        <nav className="relative z-10 border-b border-white/20 bg-transparent backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <Satellite className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <span className="text-xl font-semibold text-white">AgroRisk</span>
             </div>
-            <span className="text-xl font-semibold text-foreground">AgroRisk</span>
-          </div>
 
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={handleSignIn}
-              variant="ghost"
-              className="text-foreground hover:bg-muted px-4 py-2"
-            >
-              Sign In
-            </Button>
-            <Button
-              onClick={handleSignUp}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2"
-            >
-              Sign Up
-            </Button>
+            <div className="flex items-center gap-4">
+              <Button
+                onClick={handleSignIn}
+                variant="ghost"
+                className="text-white hover:bg-white/10 px-4 py-2"
+              >
+                Sign In
+              </Button>
+              <Button
+                onClick={handleSignUp}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2"
+              >
+                Sign Up
+              </Button>
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* Hero Section */}
-      <section className="flex-1 flex items-center justify-center px-4 py-20">
-        <div className="max-w-3xl w-full text-center space-y-8">
+        {/* Hero Section content */}
+        <section className="relative z-10 flex-1 flex items-center justify-center px-4 py-20">
+          <div className="max-w-3xl w-full text-center space-y-8">
           <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-bold text-foreground text-balance">
+            <h1 className="text-5xl md:text-6xl font-bold text-white text-balance">
               AgroRisk
             </h1>
-            <p className="text-xl text-muted-foreground text-balance">
+            <p className="text-xl text-white/90 text-balance">
               Field-level insights for smarter credit and insurance decisions
             </p>
           </div>
@@ -75,13 +85,14 @@ export function LandingPage() {
             <Button
               onClick={handleSignIn}
               variant="outline"
-              className="border-border text-foreground hover:bg-muted px-8 py-6 text-lg bg-transparent rounded-lg"
+              className="border-white/80 text-white hover:bg-white/10 px-8 py-6 text-lg bg-transparent rounded-lg"
             >
               Sign In
             </Button>
           </div>
         </div>
-      </section>
+        </section>
+      </div>
 
       {/* Features Section */}
       <section className="bg-card py-20 border-t border-border">

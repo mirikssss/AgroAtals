@@ -10,7 +10,10 @@ import {
   Trash2, 
   MapPin,
   Layers,
-  RotateCcw
+  RotateCcw,
+  Map,
+  Satellite,
+  Mountain
 } from 'lucide-react'
 import type L from 'leaflet'
 
@@ -75,6 +78,8 @@ export function DrawMap({
   const [activeTool, setActiveTool] = useState<'rectangle' | 'polygon' | 'edit' | null>(null)
   const [drawnArea, setDrawnArea] = useState<DrawnArea | null>(null)
   const [leaflet, setLeaflet] = useState<typeof L | null>(null)
+  const [mapType, setMapType] = useState<'street' | 'satellite' | 'hybrid'>('satellite')
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
 
   // Load Leaflet dynamically (client-side only)
   useEffect(() => {
@@ -112,11 +117,13 @@ export function DrawMap({
     // Add zoom control to top-left
     L.control.zoom({ position: 'topleft' }).addTo(map)
 
-    // Add tile layer (OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    // Add satellite tile layer by default (ESRI World Imagery)
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
       maxZoom: 19,
-    }).addTo(map)
+    })
+    satelliteLayer.addTo(map)
+    tileLayerRef.current = satelliteLayer
 
     // Create feature group for drawn items
     const drawnItems = new L.FeatureGroup()
@@ -285,6 +292,48 @@ export function DrawMap({
     mapRef.current.setView(initialCenter, initialZoom)
   }, [initialCenter, initialZoom])
 
+  // Switch map type
+  const switchMapType = useCallback((type: 'street' | 'satellite' | 'hybrid') => {
+    if (!mapRef.current || !leaflet) return
+    
+    const L = leaflet
+    
+    // Remove current tile layer
+    if (tileLayerRef.current) {
+      mapRef.current.removeLayer(tileLayerRef.current)
+    }
+    
+    let newLayer: L.TileLayer
+    
+    if (type === 'street') {
+      newLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      })
+    } else if (type === 'satellite') {
+      newLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19,
+      })
+    } else {
+      // Hybrid - satellite with labels
+      newLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19,
+      })
+      // Add labels layer on top
+      const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        pane: 'shadowPane',
+      })
+      labelsLayer.addTo(mapRef.current)
+    }
+    
+    newLayer.addTo(mapRef.current)
+    tileLayerRef.current = newLayer
+    setMapType(type)
+  }, [leaflet])
+
   return (
     <Card className="overflow-hidden border-border/50">
       {/* Toolbar */}
@@ -333,7 +382,7 @@ export function DrawMap({
           </Button>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 border-r border-border/50 pr-2">
           <Button
             variant="ghost"
             size="sm"
@@ -341,6 +390,37 @@ export function DrawMap({
             title="Reset View"
           >
             <RotateCcw className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Map Type Switcher */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant={mapType === 'street' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => switchMapType('street')}
+            className={mapType === 'street' ? 'bg-blue-500 hover:bg-blue-600' : ''}
+            title="Street Map"
+          >
+            <Map className="w-4 h-4" />
+          </Button>
+          <Button
+            variant={mapType === 'satellite' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => switchMapType('satellite')}
+            className={mapType === 'satellite' ? 'bg-blue-500 hover:bg-blue-600' : ''}
+            title="Satellite"
+          >
+            <Satellite className="w-4 h-4" />
+          </Button>
+          <Button
+            variant={mapType === 'hybrid' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => switchMapType('hybrid')}
+            className={mapType === 'hybrid' ? 'bg-blue-500 hover:bg-blue-600' : ''}
+            title="Hybrid (Satellite + Labels)"
+          >
+            <Mountain className="w-4 h-4" />
           </Button>
         </div>
 

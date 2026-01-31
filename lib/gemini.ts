@@ -1,7 +1,7 @@
 // Gemini AI Integration for AgroAtlas
 // API Documentation: https://ai.google.dev/gemini-api
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+const GEMINI_API_KEY = "AIzaSyD6DHUHx4VdBESh8xdfMwybda58b2eAV_0";
 
 // Use gemini-2.0-flash (latest) or fallback options
 const GEMINI_MODELS = [

@@ -16,7 +16,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'AgroAtlas | Agricultural Risk Intelligence Platform',
+  title: 'AgroRisk | Agricultural Risk Intelligence Platform',
   description: 'Field-level agricultural risk insights for banks, insurers, and agri-finance professionals. Analyze crop risks with satellite data and AI-powered recommendations.',
   generator: 'v0.app',
   icons: {

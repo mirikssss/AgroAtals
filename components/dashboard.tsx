@@ -803,7 +803,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Satellite className="w-5 h-5 text-primary-foreground" />
               </div>
-              <h1 className="text-2xl font-bold text-foreground">AgroAtlas</h1>
+              <h1 className="text-2xl font-bold text-foreground">AgroRisk</h1>
             </button>
             
             {/* Right side icons */}
@@ -819,7 +819,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
                 user={{
                   name: user?.name || user?.email.split('@')[0] || 'User',
                   email: user?.email || '',
-                  organization: 'AgroAtlas',
+                  organization: 'AgroRisk',
                   role: 'Risk Analyst'
                 }}
                 onLogout={logout}

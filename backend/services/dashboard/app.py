@@ -238,6 +238,7 @@ def dashboard_metrics(
             "p90": p90,
             "spread": spread,
             "confidenceLabel": _confidence_label(spread),
+            "riskCategory": risk_category,
         }
     except Exception as exc:
         print(f"[dashboard/metrics] error: {exc}")

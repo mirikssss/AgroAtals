@@ -130,6 +130,7 @@ interface DashboardMetrics {
   p90: number
   spread: number
   confidenceLabel: string
+  riskCategory?: string
 }
 
 export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
@@ -157,6 +158,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainCardId, setExplainCardId] = useState<KpiCardId | null>(null)
   const [explainText, setExplainText] = useState<string>('')
+  const [explainIsMock, setExplainIsMock] = useState(false)
   const [explainLoading, setExplainLoading] = useState(false)
   
   // Track if we should fit bounds (only on initial load or region change)
@@ -299,7 +301,16 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
       const data = await res.json()
       setSelectedDistrictData(data)
     } catch (err: any) {
-      setKpiError('Failed to load KPI data')
+      const msg = err?.message || ''
+      const isConnectionRefused = msg.includes('Failed to fetch') || msg.includes('Load failed') || msg.includes('NetworkError')
+      setKpiError(
+        isConnectionRefused
+          ? 'Dashboard API недоступен. Запустите бэкенд: cd backend/services/dashboard && pip install -r requirements.txt && uvicorn app:app --port 8000'
+          : 'Failed to load KPI data'
+      )
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[fetchDashboardMetrics]', err)
+      }
     } finally {
       setIsKpiLoading(false)
     }
@@ -335,8 +346,10 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
       })
       const data = await res.json()
       setExplainText(data.explanation || 'Не удалось загрузить объяснение.')
+      setExplainIsMock(!!data.isMock)
     } catch {
       setExplainText('Ошибка загрузки объяснения. Попробуйте позже.')
+      setExplainIsMock(false)
     } finally {
       setExplainLoading(false)
     }
@@ -474,11 +487,16 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               <div className="p-2 rounded-lg bg-primary/10">
                 <MapPin className="w-5 h-5 text-primary" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">
                   {selectedDistrict ? 'Selected District' : 'Selected'}
                 </p>
                 <h2 className="text-base font-bold text-foreground truncate">{displayName}</h2>
+                {selectedDistrictData?.riskCategory && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Prediction: <span className="font-medium text-foreground">{selectedDistrictData.riskCategory.replace('_', ' ')}</span>
+                  </p>
+                )}
               </div>
             </div>
           </Card>
@@ -562,9 +580,16 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-              {explainText}
-            </p>
+            <>
+              {explainIsMock && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                  Справочное объяснение (ИИ недоступен). Задайте GEMINI_API_KEY в .env.local для ответов от ИИ.
+                </p>
+              )}
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {explainText}
+              </p>
+            </>
           )}
         </DialogContent>
       </Dialog>

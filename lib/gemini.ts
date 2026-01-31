@@ -1,7 +1,8 @@
 // Gemini AI Integration for AgroAtlas
 // API Documentation: https://ai.google.dev/gemini-api
-
-const GEMINI_API_KEY = "AIzaSyD6DHUHx4VdBESh8xdfMwybda58b2eAV_0";
+// Set GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY in .env.local
+const getGeminiApiKey = () =>
+  process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || ''
 
 // Use gemini-2.0-flash (latest) or fallback options
 const GEMINI_MODELS = [
@@ -46,7 +47,8 @@ export interface GeminiResponse {
 }
 
 export async function getAgroRecommendation(regionData: RegionData): Promise<GeminiResponse> {
-  if (!GEMINI_API_KEY) {
+  const apiKey = getGeminiApiKey()
+  if (!apiKey || !apiKey.trim()) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
@@ -74,7 +76,7 @@ export async function getAgroRecommendation(regionData: RegionData): Promise<Gem
   
   for (const model of GEMINI_MODELS) {
     try {
-      const response = await fetch(`${getGeminiUrl(model)}?key=${GEMINI_API_KEY}`, {
+      const response = await fetch(`${getGeminiUrl(model)}?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: requestBody
@@ -290,12 +292,20 @@ const KPI_CARD_DESCRIPTIONS: Record<KpiCardId, string> = {
   confidence: 'Basis Risk / Model Confidence',
 };
 
+/** Result of getKpiExplanation: explanation text and whether it's a fallback (no API key or Gemini failed). */
+export interface KpiExplanationResult {
+  explanation: string
+  isMock: boolean
+}
+
 /** Call Gemini 2.5 Flash for short banker-facing explanation of a KPI card and its ML data */
-export async function getKpiExplanation(cardId: KpiCardId, metrics: KpiExplainMetrics): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) {
-    return getMockKpiExplanation(cardId, metrics);
+export async function getKpiExplanation(cardId: KpiCardId, metrics: KpiExplainMetrics): Promise<KpiExplanationResult> {
+  const apiKey = getGeminiApiKey()
+  if (!apiKey || apiKey.trim() === '') {
+    console.warn('[getKpiExplanation] GEMINI_API_KEY not set — using mock. Set GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY in .env.local');
+    return { explanation: getMockKpiExplanation(cardId, metrics), isMock: true };
   }
+  console.log('[getKpiExplanation] Calling Gemini API for card:', cardId);
 
   const cardTitle = KPI_CARD_DESCRIPTIONS[cardId];
   const prompt = `You are an expert explaining agricultural risk metrics to bank credit officers (AgroAtlas product). Audience: bankers.
@@ -331,21 +341,27 @@ Tone: professional, concise. No bullet lists. Plain paragraphs.`;
     try {
       const url = `${getGeminiUrl(model)}?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      const responseText = await res.text();
       if (!res.ok) {
+        console.warn(`[getKpiExplanation] Gemini ${model} failed: ${res.status}`, responseText.slice(0, 200));
         if (res.status === 404) continue;
-        const err = await res.text();
-        throw new Error(`Gemini ${res.status}: ${err}`);
+        throw new Error(`Gemini ${res.status}: ${responseText.slice(0, 200)}`);
       }
-      const data = await res.json();
+      const data = JSON.parse(responseText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return text.trim();
+      if (text) {
+        console.log('[getKpiExplanation] Gemini success with model:', model);
+        return { explanation: text.trim(), isMock: false };
+      }
+      console.warn('[getKpiExplanation] Gemini returned no text in response');
     } catch (e) {
       if (String(e).includes('404')) continue;
-      console.error('Gemini KPI explain error:', e);
+      console.error('[getKpiExplanation] Gemini error:', e);
       break;
     }
   }
-  return getMockKpiExplanation(cardId, metrics);
+  console.warn('[getKpiExplanation] All models failed, using mock');
+  return { explanation: getMockKpiExplanation(cardId, metrics), isMock: true };
 }
 
 export function getMockKpiExplanation(cardId: KpiCardId, metrics: KpiExplainMetrics): string {

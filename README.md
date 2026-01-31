@@ -28,3 +28,15 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+## Local development: KPI cards (Dashboard)
+
+The KPI cards (Portfolio Value at Risk, Yield Anomaly, Basis Risk) load data from a separate Python backend. To see real data locally:
+
+1. From the project root, run the dashboard API (port 8000):
+   ```bash
+   cd backend/services/dashboard
+   pip install -r requirements.txt
+   uvicorn app:app --reload --port 8000
+   ```
+2. Keep the Next.js app running (`pnpm dev`). It will request `http://localhost:8000/dashboard/metrics` by default. Override with `NEXT_PUBLIC_DASHBOARD_API_URL` in `.env.local` if needed.

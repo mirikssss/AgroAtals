@@ -3,6 +3,9 @@ import { getKpiExplanation, type KpiCardId, type KpiExplainMetrics } from '@/lib
 
 export async function POST(request: NextRequest) {
   try {
+    const hasKey = !!(process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY)
+    console.log('[explain-kpi] POST request, GEMINI_API_KEY set:', hasKey)
+
     const body = await request.json()
     const { cardId, ...metrics } = body as { cardId: KpiCardId } & KpiExplainMetrics
 
@@ -13,8 +16,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const explanation = await getKpiExplanation(cardId, metrics ?? {})
-    return NextResponse.json({ explanation })
+    const { explanation, isMock } = await getKpiExplanation(cardId, metrics ?? {})
+    return NextResponse.json({ explanation, isMock })
   } catch (error) {
     console.error('explain-kpi API error:', error)
     return NextResponse.json(

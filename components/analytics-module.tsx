@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,15 +45,27 @@ import {
   Target,
   BarChart3,
   ArrowRight,
+  MapPin,
 } from 'lucide-react'
 import { useLanguage } from '@/lib/language-context'
-import { centralAsianCountries, mockDistrictData } from '@/data/regions-data'
+import { mockDistrictData } from '@/data/regions-data'
 import { 
   useAIRecommendation, 
   AIRecommendationTrigger, 
   AIRecommendationContent 
 } from '@/components/inline-ai-recommendation'
 import type { RegionData } from '@/lib/gemini'
+import type { DrawnArea } from '@/components/draw-map'
+
+// Dynamic import for DrawMap (client-side only)
+const DrawMap = dynamic(() => import('@/components/draw-map'), { 
+  ssr: false,
+  loading: () => (
+    <div className="h-[400px] w-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#10B981]"></div>
+    </div>
+  )
+})
 
 // Types
 type AnalysisPhase = 'input' | 'analyzing' | 'results'
@@ -61,10 +74,9 @@ interface LoanParams {
   loanAmount: string
   interestRate: string
   termYears: string
-  region: string
-  district: string
   crop: string
   hectares: string
+  drawnArea: DrawnArea | null
 }
 
 interface AnalysisResult {
@@ -142,26 +154,28 @@ export function AnalyticsModule() {
     loanAmount: '500000',
     interestRate: '12',
     termYears: '5',
-    region: '',
-    district: '',
     crop: 'cotton',
     hectares: '150',
+    drawnArea: null,
   })
-
-  // Get regions for Uzbekistan
-  const uzbekistan = centralAsianCountries.find(c => c.code === 'UZB')
-  const regions = uzbekistan?.regions || []
-  const selectedRegion = regions.find(r => r.name === loanParams.region)
-  const districts = selectedRegion?.districts || []
 
   // Handle form changes
   const handleInputChange = (field: keyof LoanParams, value: string) => {
     setLoanParams(prev => ({
       ...prev,
       [field]: value,
-      ...(field === 'region' ? { district: '' } : {})
     }))
   }
+
+  // Handle drawn area change
+  const handleAreaDrawn = useCallback((area: DrawnArea | null) => {
+    setLoanParams(prev => ({
+      ...prev,
+      drawnArea: area,
+      // Auto-update hectares from drawn area
+      hectares: area?.area ? area.area.toFixed(0) : prev.hectares,
+    }))
+  }, [])
 
   // Calculate DSCR
   const calculateDSCR = (loanAmount: number, rate: number, years: number, expectedRevenue: number) => {
@@ -186,8 +200,7 @@ export function AnalyticsModule() {
       setCurrentStep(i + 1)
     }
 
-    // Generate mock results based on district
-    const districtData = mockDistrictData[loanParams.district] || mockDistrictData['Samarkand']
+    // Generate mock results based on drawn area
     const hectares = parseFloat(loanParams.hectares) || 150
     const yieldPerHa = 3.2 + (Math.random() - 0.5) // t/ha
     const pricePerTon = loanParams.crop === 'cotton' ? 1200 : loanParams.crop === 'wheat' ? 280 : 350
@@ -200,12 +213,19 @@ export function AnalyticsModule() {
       expectedRevenue
     )
 
-    const riskScore = districtData?.riskScore || 0.5
+    // Generate risk based on coordinates (mock - in real app would query satellite data)
+    const riskScore = Math.random()
     let riskCategory: 'LOW' | 'MODERATE' | 'HIGH' = 'MODERATE'
     if (riskScore < 0.35) riskCategory = 'LOW'
     else if (riskScore > 0.65) riskCategory = 'HIGH'
 
-    const anomaly = parseFloat(districtData?.yieldAnomaly || '-5%')
+    const anomaly = -5 + Math.random() * 10 - 5 // -10 to 0
+    
+    // Get location name from coordinates
+    const bounds = loanParams.drawnArea?.bounds
+    const centerLat = bounds ? ((bounds.north + bounds.south) / 2).toFixed(4) : '41.3775'
+    const centerLng = bounds ? ((bounds.east + bounds.west) / 2).toFixed(4) : '64.5853'
+    const locationName = `Field ${centerLat}°N, ${centerLng}°E`
     
     setResult({
       predictedYield: yieldPerHa,
@@ -221,9 +241,9 @@ export function AnalyticsModule() {
       dscr,
       annualDebtService,
       expectedRevenue,
-      assetName: `${loanParams.crop.charAt(0).toUpperCase() + loanParams.crop.slice(1)} Field - ${loanParams.district}`,
-      region: loanParams.region,
-      district: loanParams.district,
+      assetName: `${loanParams.crop.charAt(0).toUpperCase() + loanParams.crop.slice(1)} Field`,
+      region: 'Uzbekistan',
+      district: locationName,
     })
 
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -243,9 +263,8 @@ export function AnalyticsModule() {
       {phase === 'input' && (
         <InputPhase
           loanParams={loanParams}
-          regions={regions}
-          districts={districts}
           onInputChange={handleInputChange}
+          onAreaDrawn={handleAreaDrawn}
           onAnalyze={runAnalysis}
         />
       )}
@@ -272,22 +291,21 @@ export function AnalyticsModule() {
 // Phase 1: Input Component
 interface InputPhaseProps {
   loanParams: LoanParams
-  regions: { name: string; nameLocal?: string }[]
-  districts: { name: string; nameLocal?: string }[]
   onInputChange: (field: keyof LoanParams, value: string) => void
+  onAreaDrawn: (area: DrawnArea | null) => void
   onAnalyze: () => void
 }
 
-function InputPhase({ loanParams, regions, districts, onInputChange, onAnalyze }: InputPhaseProps) {
-  const isFormValid = loanParams.region && loanParams.district && loanParams.loanAmount && loanParams.hectares
+function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze }: InputPhaseProps) {
+  const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold text-foreground">Credit Risk Analytics</h2>
         <p className="text-muted-foreground">
-          Enter loan parameters and select the agricultural asset for risk assessment
+          Enter loan parameters and draw the agricultural area on the map
         </p>
       </div>
 
@@ -343,57 +361,36 @@ function InputPhase({ loanParams, regions, districts, onInputChange, onAnalyze }
         </div>
       </Card>
 
-      {/* Asset Selection Card */}
+      {/* Map Drawing Card */}
       <Card className="p-6 border-border/50 shadow-sm">
         <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-4 border-b border-border/50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-primary font-semibold text-sm">2</span>
+          <div className="flex items-center justify-between pb-4 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-primary font-semibold text-sm">2</span>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">Draw Agricultural Area</h3>
             </div>
-            <h3 className="text-lg font-semibold text-foreground">Agricultural Asset</h3>
+            {loanParams.drawnArea && (
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin className="w-4 h-4 text-[#10B981]" />
+                <span className="text-muted-foreground">
+                  {loanParams.drawnArea.bounds && (
+                    <>
+                      {((loanParams.drawnArea.bounds.north + loanParams.drawnArea.bounds.south) / 2).toFixed(4)}°N, {' '}
+                      {((loanParams.drawnArea.bounds.east + loanParams.drawnArea.bounds.west) / 2).toFixed(4)}°E
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Region
-              </label>
-              <Select value={loanParams.region} onValueChange={(v) => onInputChange('region', v)}>
-                <SelectTrigger className="bg-input/50 border-border">
-                  <SelectValue placeholder="Select region" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {regions.map((region) => (
-                    <SelectItem key={region.name} value={region.name}>
-                      {region.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Map */}
+          <DrawMap onAreaDrawn={onAreaDrawn} />
 
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                District
-              </label>
-              <Select 
-                value={loanParams.district} 
-                onValueChange={(v) => onInputChange('district', v)}
-                disabled={!loanParams.region}
-              >
-                <SelectTrigger className="bg-input/50 border-border">
-                  <SelectValue placeholder="Select district" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border max-h-60">
-                  {districts.map((district) => (
-                    <SelectItem key={district.name} value={district.name}>
-                      {district.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+          {/* Crop Type and Area */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border/50">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 Crop Type
@@ -414,6 +411,11 @@ function InputPhase({ loanParams, regions, districts, onInputChange, onAnalyze }
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 Area (Hectares)
+                {loanParams.drawnArea && (
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (auto-calculated from drawing)
+                  </span>
+                )}
               </label>
               <Input
                 type="number"

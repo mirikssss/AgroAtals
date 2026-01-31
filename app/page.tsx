@@ -5,26 +5,20 @@ import { LanguageProvider } from '@/lib/language-context'
 import { AuthModal } from '@/components/auth-modal'
 import { LandingPage } from '@/components/landing-page'
 import { Dashboard } from '@/components/dashboard'
-import { useState } from 'react'
 
 function PageContent() {
-  const { isAuthenticated } = useAuth()
-  const [showDashboard, setShowDashboard] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
 
-  const handleNavigateToDashboard = () => {
-    setShowDashboard(true)
-  }
-
-  const handleReturnToLanding = () => {
-    setShowDashboard(false)
+  const handleLogout = () => {
+    logout()
   }
 
   return (
     <>
-      {isAuthenticated && showDashboard ? (
-        <Dashboard onNavigateToLanding={handleReturnToLanding} />
+      {isAuthenticated ? (
+        <Dashboard onNavigateToLanding={handleLogout} />
       ) : (
-        <LandingPage onNavigateToDashboard={handleNavigateToDashboard} />
+        <LandingPage />
       )}
       <AuthModal />
     </>

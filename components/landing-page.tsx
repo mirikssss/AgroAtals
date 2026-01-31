@@ -3,25 +3,14 @@
 import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Satellite, TrendingUp, BarChart3, AlertTriangle } from 'lucide-react'
 
-export function LandingPage({ onNavigateToDashboard }: { onNavigateToDashboard: () => void }) {
-  const { isAuthenticated, setShowAuthModal, setAuthMode, user, logout } = useAuth()
+export function LandingPage() {
+  const { setShowAuthModal, setAuthMode } = useAuth()
 
-  const handlePrimaryCTA = () => {
-    if (isAuthenticated) {
-      onNavigateToDashboard()
-    } else {
-      setAuthMode('signup')
-      setShowAuthModal(true)
-    }
+  const handleGetStarted = () => {
+    setAuthMode('signup')
+    setShowAuthModal(true)
   }
 
   const handleSignIn = () => {
@@ -39,68 +28,27 @@ export function LandingPage({ onNavigateToDashboard }: { onNavigateToDashboard: 
       {/* Navigation */}
       <nav className="border-b border-border/30 bg-card/50 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <button 
-            onClick={onNavigateToDashboard}
-            className="flex items-center gap-2 hover:opacity-80 transition"
-          >
+          <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Satellite className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-semibold text-foreground">AgroAtlas</span>
-          </button>
+          </div>
 
           <div className="flex items-center gap-4">
-            {isAuthenticated && user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 hover:opacity-80 transition">
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-foreground">{user.name || user.email.split('@')[0]}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                    <Avatar className="h-8 w-8 bg-primary">
-                      <AvatarFallback className="bg-primary text-primary-foreground font-semibold text-xs">
-                        {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-card border-border w-48">
-                  <div className="px-4 py-2 border-b border-border">
-                    <p className="text-sm font-medium text-foreground">{user.name || user.email.split('@')[0]}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
-                  </div>
-                  <DropdownMenuItem
-                    onClick={onNavigateToDashboard}
-                    className="text-foreground cursor-pointer hover:bg-muted"
-                  >
-                    Dashboard
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={logout}
-                    className="text-foreground cursor-pointer hover:bg-muted"
-                  >
-                    Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <>
-                <Button
-                  onClick={handleSignIn}
-                  variant="ghost"
-                  className="text-foreground hover:bg-muted px-4 py-2"
-                >
-                  Sign In
-                </Button>
-                <Button
-                  onClick={handleSignUp}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2"
-                >
-                  Sign Up
-                </Button>
-              </>
-            )}
+            <Button
+              onClick={handleSignIn}
+              variant="ghost"
+              className="text-foreground hover:bg-muted px-4 py-2"
+            >
+              Sign In
+            </Button>
+            <Button
+              onClick={handleSignUp}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2"
+            >
+              Sign Up
+            </Button>
           </div>
         </div>
       </nav>
@@ -113,26 +61,24 @@ export function LandingPage({ onNavigateToDashboard }: { onNavigateToDashboard: 
               AgroAtlas
             </h1>
             <p className="text-xl text-muted-foreground text-balance">
-              {isAuthenticated ? 'Welcome back! Access real-time field analytics and risk insights.' : 'Field-level insights for smarter credit and insurance decisions'}
+              Field-level insights for smarter credit and insurance decisions
             </p>
           </div>
 
           <div className="flex gap-4 justify-center flex-wrap">
             <Button 
-              onClick={handlePrimaryCTA}
+              onClick={handleGetStarted}
               className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 text-lg rounded-lg shadow-sm hover:shadow-md transition-all font-semibold"
             >
-              {isAuthenticated ? 'Go to Dashboard' : 'Get Started'}
+              Get Started
             </Button>
-            {!isAuthenticated && (
-              <Button
-                onClick={handleSignUp}
-                variant="outline"
-                className="border-border text-foreground hover:bg-muted px-8 py-6 text-lg bg-transparent rounded-lg"
-              >
-                Register
-              </Button>
-            )}
+            <Button
+              onClick={handleSignIn}
+              variant="outline"
+              className="border-border text-foreground hover:bg-muted px-8 py-6 text-lg bg-transparent rounded-lg"
+            >
+              Sign In
+            </Button>
           </div>
         </div>
       </section>

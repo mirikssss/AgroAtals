@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Card } from '@/components/ui/card'
 import {
   Dialog,
@@ -363,16 +363,25 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
 
   // Yield anomaly per area (region or district) for map coloring
   const [yieldAnomalyByArea, setYieldAnomalyByArea] = useState<Record<string, number>>({})
+  const [yieldAnomalyLoading, setYieldAnomalyLoading] = useState(false)
+  const fetchKeyRef = useRef<string>('')
 
   useEffect(() => {
     if (selectedCountry !== 'UZB' || !currentGeoJSON?.features?.length) {
+      fetchKeyRef.current = ''
       setYieldAnomalyByArea({})
+      setYieldAnomalyLoading(false)
       return
     }
     const yearValue = selectedYear === 'current' ? new Date().getFullYear() : Number(selectedYear)
     const scope = isShowingDistricts ? 'district' : 'region'
     const getAreaName = (f: GeoJSONFeature) => f.properties?.name || f.properties?.ADM1_EN || ''
     const areaNames = currentGeoJSON.features.map(getAreaName).filter(Boolean)
+    const fetchKey = `${scope}-${yearValue}-${[...areaNames].sort().join('|')}`
+    if (fetchKeyRef.current === fetchKey) return
+    fetchKeyRef.current = fetchKey
+
+    setYieldAnomalyLoading(true)
     const crop = 'wheat'
 
     Promise.all(
@@ -387,7 +396,17 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           const res = await fetch(url.toString())
           if (!res.ok) return { areaName, p50: null as number | null }
           const data = await res.json()
-          return { areaName, p50: typeof data.p50 === 'number' ? data.p50 : null }
+          // p50 = yield anomaly in % (backend returns number; if |p50| <= 1.5 assume fraction 0.05 = 5%)
+          let p50: number | null = null
+          if (typeof data.p50 === 'number' && !Number.isNaN(data.p50)) {
+            const v = data.p50
+            p50 = Math.abs(v) < 1 && v !== 0 ? v * 100 : v
+          } else if (data.yieldAnomaly != null) {
+            const s = String(data.yieldAnomaly).replace(/\s/g, '').replace(/%/g, '')
+            const n = parseFloat(s)
+            if (!Number.isNaN(n)) p50 = Math.abs(n) < 1 && n !== 0 ? n * 100 : n
+          }
+          return { areaName, p50 }
         } catch {
           return { areaName, p50: null as number | null }
         }
@@ -398,6 +417,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
         if (p50 != null) byArea[areaName] = p50
       })
       setYieldAnomalyByArea(byArea)
+      setYieldAnomalyLoading(false)
     })
   }, [selectedCountry, selectedYear, currentGeoJSON, isShowingDistricts, apiBaseUrl])
 
@@ -419,7 +439,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           )}
           
           {/* Map Container - z-0 so dropdowns (z-100) and header stay above */}
-          <Card className="flex-1 h-[500px] overflow-hidden border-border relative z-0">
+          <Card className="flex-1 h-[520px] overflow-hidden border-border relative z-0">
             {isLoadingDistricts && (
               <div className="absolute inset-0 bg-background/80 z-10 flex items-center justify-center">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -439,6 +459,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 shouldFitBounds={shouldFitBounds}
                 onBoundsFitted={handleBoundsFitted}
                 yieldAnomalyByArea={yieldAnomalyByArea}
+                yieldAnomalyLoading={yieldAnomalyLoading}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-[#eff6ff] dark:bg-slate-900">
@@ -523,7 +544,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
         </div>
         
         {/* Right Side - KPI Cards */}
-        <div className="flex flex-col gap-4 h-[500px]">
+        <div className="flex flex-col gap-4 h-[520px]">
           {/* Selected Area Header */}
           <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)]">
             <div className="flex items-center gap-3">

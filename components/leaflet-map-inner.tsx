@@ -38,13 +38,18 @@ interface LeafletMapInnerProps {
   onBoundsFitted: () => void
   /** Yield anomaly % per area name (region/district) for fill color */
   yieldAnomalyByArea?: Record<string, number>
+  /** True while anomaly data is being fetched */
+  yieldAnomalyLoading?: boolean
 }
 
-// Color by Yield Anomaly: < -15% red, -15..-5% orange, -5..+5% neutral, > +5% green
+// Color by Yield Anomaly (%): < -15% red, -15..-5% orange, -5..+5% neutral, > +5% green
+// Ensure anomaly is numeric (backend may return fraction or string)
 function getColorByAnomaly(anomaly: number): string {
-  if (anomaly < -15) return '#FF4D4D'
-  if (anomaly < -5) return '#FFA726'
-  if (anomaly <= 5) return '#E0E0E0'
+  const pct = Number(anomaly)
+  if (Number.isNaN(pct)) return '#E0E0E0'
+  if (pct < -15) return '#FF4D4D'
+  if (pct < -5) return '#FFA726'
+  if (pct <= 5) return '#E0E0E0'
   return '#66BB6A'
 }
 
@@ -122,6 +127,7 @@ export function LeafletMapInner({
   shouldFitBounds,
   onBoundsFitted,
   yieldAnomalyByArea,
+  yieldAnomalyLoading = false,
 }: LeafletMapInnerProps) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null)
   const normalizedData = normalizeGeoJSON(geoJSONData)
@@ -234,32 +240,32 @@ export function LeafletMapInner({
         onBoundsFitted={onBoundsFitted}
       />
 
-      {/* Risk map legend: Yield Anomaly → color */}
-      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-white/80 bg-white/95 px-3 py-2 shadow-md backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95">
+      {/* Risk map legend: Yield Anomaly → color (with smooth fade-in) */}
+      <div className="absolute bottom-3 right-3 z-[1000] animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-lg border border-white/80 bg-white/95 px-3 py-2 shadow-md backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95">
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-          Risk map (Yield Anomaly)
+          {yieldAnomalyLoading ? 'Loading risk colors…' : 'Risk map (Yield Anomaly)'}
         </p>
         <div className="space-y-1 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FF4D4D' }} />
+          <div className="flex items-center gap-2 transition-opacity duration-200">
+            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#FF4D4D' }} />
             <span className="text-gray-600 dark:text-gray-400">Critical (&lt;-15%)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FFA726' }} />
+          <div className="flex items-center gap-2 transition-opacity duration-200">
+            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#FFA726' }} />
             <span className="text-gray-600 dark:text-gray-400">Moderate loss (-15% to -5%)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#E0E0E0' }} />
+          <div className="flex items-center gap-2 transition-opacity duration-200">
+            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#E0E0E0' }} />
             <span className="text-gray-600 dark:text-gray-400">Stable (±5%)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#66BB6A' }} />
+          <div className="flex items-center gap-2 transition-opacity duration-200">
+            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#66BB6A' }} />
             <span className="text-gray-600 dark:text-gray-400">Growth (&gt;+5%)</span>
           </div>
         </div>
       </div>
       
-      {/* Custom CSS for tooltips and controls */}
+      {/* Custom CSS: smooth transitions for polygon fill + tooltips and controls */}
       <style jsx global>{`
         .leaflet-tooltip-custom {
           background-color: white;
@@ -269,6 +275,7 @@ export function LeafletMapInner({
           font-size: 12px;
           font-weight: 500;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          transition: opacity 0.2s ease, transform 0.2s ease;
         }
         .leaflet-tooltip-custom::before {
           display: none;
@@ -276,6 +283,10 @@ export function LeafletMapInner({
         .leaflet-container {
           font-family: inherit;
           background: #eff6ff;
+        }
+        .leaflet-interactive,
+        .leaflet-path {
+          transition: fill 0.35s ease-out, fill-opacity 0.35s ease-out, stroke 0.25s ease-out, stroke-width 0.25s ease-out !important;
         }
         .leaflet-control-zoom {
           border: none !important;

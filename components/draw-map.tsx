@@ -288,24 +288,6 @@ export function DrawMap({
     }
   }, [leaflet, initialCenter, initialZoom, onAreaDrawn])
 
-  // Update location when drawnArea changes and GeoJSON is available
-  useEffect(() => {
-    if (!drawnArea || !drawnArea.bounds) {
-      setDetectedLocation(null)
-      return
-    }
-
-    const centerLat = (drawnArea.bounds.north + drawnArea.bounds.south) / 2
-    const centerLng = (drawnArea.bounds.east + drawnArea.bounds.west) / 2
-    const location = findLocation(centerLat, centerLng)
-    
-    setDetectedLocation(location)
-    
-    // Update the drawnArea with location and notify parent
-    const updatedArea = { ...drawnArea, location }
-    onAreaDrawn(updatedArea)
-  }, [drawnArea?.bounds, regionsGeoJSON, allDistrictsGeoJSON, findLocation])
-
   // Add/remove boundary layers when showBoundaries changes or GeoJSON loads
   useEffect(() => {
     if (!mapRef.current || !leaflet || !isLoaded) return
@@ -477,6 +459,24 @@ export function DrawMap({
       center: { lat: centerLat, lng: centerLng }
     }
   }, [regionsGeoJSON, allDistrictsGeoJSON])
+
+  // Update location when drawnArea changes and GeoJSON is available
+  useEffect(() => {
+    if (!drawnArea || !drawnArea.bounds) {
+      setDetectedLocation(null)
+      return
+    }
+
+    const centerLat = (drawnArea.bounds.north + drawnArea.bounds.south) / 2
+    const centerLng = (drawnArea.bounds.east + drawnArea.bounds.west) / 2
+    const location = findLocation(centerLat, centerLng)
+    
+    setDetectedLocation(location)
+    
+    // Update the drawnArea with location and notify parent
+    const updatedArea = { ...drawnArea, location }
+    onAreaDrawn(updatedArea)
+  }, [drawnArea?.bounds, regionsGeoJSON, allDistrictsGeoJSON, findLocation, onAreaDrawn])
 
   // Extract area data from drawn layer
   const extractAreaData = useCallback((layer: any, layerType: string): DrawnArea => {

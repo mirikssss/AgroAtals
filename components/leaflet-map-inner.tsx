@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useCallback } from 'react'
-import { MapContainer, GeoJSON, useMap } from 'react-leaflet'
+import { MapContainer, GeoJSON, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import type { Layer, PathOptions, LeafletMouseEvent } from 'leaflet'
 
@@ -115,7 +115,7 @@ export function LeafletMapInner({
   const geoJsonRef = useRef<L.GeoJSON | null>(null)
   const normalizedData = normalizeGeoJSON(geoJSONData)
   
-  // Base style for all areas - uniform green with gray borders
+  // Base style for all areas - transparent fill with clean borders
   const getStyle = useCallback((feature: GeoJSONFeature | undefined): PathOptions => {
     if (!feature) return {}
     
@@ -124,11 +124,11 @@ export function LeafletMapInner({
     const isSelected = areaName === selectedArea
     
     return {
-      fillColor: '#10B981', // brand green - uniform for all
+      fillColor: 'rgba(255, 255, 255, 0.1)',
       weight: isHovered || isSelected ? 2 : 1,
       opacity: 1,
-      color: isHovered || isSelected ? '#1e40af' : '#9ca3af', // blue when hovered, gray-400 otherwise
-      fillOpacity: isHovered ? 0.7 : isSelected ? 0.8 : 0.5,
+      color: isHovered || isSelected ? '#1e40af' : '#ffffff',
+      fillOpacity: isHovered ? 0.25 : isSelected ? 0.2 : 0.12,
     }
   }, [hoveredArea, selectedArea])
   
@@ -188,7 +188,7 @@ export function LeafletMapInner({
       zoom={zoom}
       className="w-full h-full"
       style={{ 
-        backgroundColor: '#eff6ff',
+        backgroundColor: '#0b1e2d',
         minHeight: '100%'
       }}
       zoomControl={true}
@@ -196,6 +196,12 @@ export function LeafletMapInner({
       doubleClickZoom={true}
       dragging={true}
     >
+      {/* Relief / satellite basemap */}
+      <TileLayer
+        attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+      />
+
       {/* GeoJSON Layer */}
       <GeoJSON
         key={geoJsonKey}

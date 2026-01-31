@@ -87,7 +87,7 @@ interface KPICardProps {
 
 function KPICard({ title, value, icon, subtitle }: KPICardProps) {
   return (
-    <Card className="p-4 bg-card border-border">
+    <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)]">
       <div className="flex items-start justify-between mb-2">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           {title}
@@ -258,72 +258,6 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
 
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
-      {/* Filters Row - Above everything */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Country
-          </label>
-          <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-            <SelectTrigger className="bg-card border-border">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border">
-              {centralAsianCountries.map((country) => (
-                <SelectItem key={country.code} value={country.code}>
-                  {country.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Region
-          </label>
-          <Select value={selectedRegion} onValueChange={(value) => {
-            if (value === 'all') {
-              handleBackToRegions()
-            } else {
-              setSelectedRegion(value)
-              setSelectedDistrict(null)
-              setDisplayName(value)
-            }
-          }}>
-            <SelectTrigger className="bg-card border-border">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border">
-              <SelectItem value="all">All Regions</SelectItem>
-              {regionsList.map((region) => (
-                <SelectItem key={region.name} value={region.name}>
-                  {region.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Year
-          </label>
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="bg-card border-border">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border">
-              {availableYears.map((year) => (
-                <SelectItem key={year.value} value={year.value}>
-                  {year.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
       {/* Main Content Row - Map and KPI side by side with equal height */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
         {/* Left Side - Map */}
@@ -374,12 +308,78 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </div>
             )}
           </Card>
+
+          {/* Filters Row - Below the map */}
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Country
+              </label>
+              <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                <SelectTrigger className="bg-card border-border h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {centralAsianCountries.map((country) => (
+                    <SelectItem key={country.code} value={country.code}>
+                      {country.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Region
+              </label>
+              <Select value={selectedRegion} onValueChange={(value) => {
+                if (value === 'all') {
+                  handleBackToRegions()
+                } else {
+                  setSelectedRegion(value)
+                  setSelectedDistrict(null)
+                  setDisplayName(value)
+                }
+              }}>
+                <SelectTrigger className="bg-card border-border h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  <SelectItem value="all">All Regions</SelectItem>
+                  {regionsList.map((region) => (
+                    <SelectItem key={region.name} value={region.name}>
+                      {region.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Year
+              </label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="bg-card border-border h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {availableYears.map((year) => (
+                    <SelectItem key={year.value} value={year.value}>
+                      {year.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
         
         {/* Right Side - KPI Cards */}
         <div className="flex flex-col gap-4 h-[500px]">
           {/* Selected Area Header */}
-          <Card className="p-4 bg-card border-border">
+          <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)]">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
                 <MapPin className="w-5 h-5 text-primary" />
@@ -410,7 +410,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           />
           
           {/* KPI Card 3: AI Insights */}
-          <Card className="p-4 bg-card border-border flex-1 flex flex-col">
+          <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)] flex-1 flex flex-col">
             <div className="flex items-start justify-between mb-2">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 AI Recommendation
@@ -425,7 +425,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           </Card>
           
           {/* Year indicator */}
-          <div className="p-2 rounded-lg bg-muted/50 text-center">
+          <div className="p-2 rounded-2xl bg-muted/50 text-center shadow-[0_14px_40px_-14px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.28)]">
             <p className="text-xs text-muted-foreground">
               Data: <span className="font-semibold text-foreground">
                 {selectedYear === 'current' ? '2025' : selectedYear}

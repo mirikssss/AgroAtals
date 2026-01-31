@@ -73,10 +73,10 @@ const alerts = [
 ]
 
 const sampleFields = [
-  { id: 'F001', location: 'Kunduz, Tajikistan', crop: 'Cotton', risk: 'Moderate', lastAnalysis: '2024-01-15' },
-  { id: 'F002', location: 'Punjab, India', crop: 'Wheat', risk: 'Low', lastAnalysis: '2024-01-14' },
-  { id: 'F003', location: 'Sindh, Pakistan', crop: 'Cotton', risk: 'Moderate', lastAnalysis: '2024-01-10' },
-  { id: 'F004', location: 'Andhra Pradesh, India', crop: 'Rice', risk: 'High', lastAnalysis: '2024-01-12' },
+  { id: 'F001', location: 'Kunduz, Tajikistan', crop: 'Cotton', risk: 'Moderate', lastAnalysis: '2024-01-15', coordinates: '36.7372, 69.2081' },
+  { id: 'F002', location: 'Punjab, India', crop: 'Wheat', risk: 'Low', lastAnalysis: '2024-01-14', coordinates: '31.5497, 74.3436' },
+  { id: 'F003', location: 'Sindh, Pakistan', crop: 'Cotton', risk: 'Moderate', lastAnalysis: '2024-01-10', coordinates: '25.8943, 68.5247' },
+  { id: 'F004', location: 'Andhra Pradesh, India', crop: 'Rice', risk: 'High', lastAnalysis: '2024-01-12', coordinates: '15.9129, 79.7400' },
 ]
 
 function DashboardOverview() {
@@ -555,7 +555,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
             {/* Right side icons */}
             <div className="flex items-center gap-4">
               {/* Notification Icon */}
-              <button className="relative p-2 hover:bg-muted rounded-lg transition-colors">
+              <button className="relative p-2 hover:bg-muted rounded-2xl shadow-[0_14px_40px_-14px_rgba(0,0,0,0.3)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.38)]">
                 <Bell className="w-5 h-5 text-muted-foreground hover:text-foreground" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
               </button>
@@ -578,25 +578,25 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
             <TabsList className="bg-transparent border-b-0 rounded-none h-auto gap-4 p-0 pb-4 w-full justify-start">
               <TabsTrigger
                 value="dashboard"
-                className="rounded-lg px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-200 hover:text-foreground hover:bg-muted/50 border-0 shadow-none"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
               >
                 {t('dashboard')}
               </TabsTrigger>
               <TabsTrigger
                 value="portfolio"
-                className="rounded-lg px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-200 hover:text-foreground hover:bg-muted/50 border-0 shadow-none"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
               >
                 {t('portfolio')}
               </TabsTrigger>
               <TabsTrigger
                 value="analytics"
-                className="rounded-lg px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-200 hover:text-foreground hover:bg-muted/50 border-0 shadow-none"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
               >
                 {t('analytics')}
               </TabsTrigger>
               <TabsTrigger
                 value="fields"
-                className="rounded-lg px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-200 hover:text-foreground hover:bg-muted/50 border-0 shadow-none"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
               >
                 {t('fields')}
               </TabsTrigger>

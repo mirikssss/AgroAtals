@@ -161,7 +161,7 @@ const translations: Record<Language, Record<string, string>> = {
     fieldAddedToTracking: 'Field added. Open the Fields tab to view.',
     // Landing
     landingH1: 'Stop Gambling on Weather. Start Calculating Risk.',
-    landingSub: 'AgroAtlas — the first agro-scoring system in Central Asia with 80% Coverage Probability. We digitize climate risks so you protect your portfolio.',
+    landingSub: 'AgroRisk — the first agro-scoring system in Central Asia with 80% Coverage Probability. We digitize climate risks so you protect your portfolio.',
     signIn: 'Sign In',
     signUp: 'Sign Up',
     getStarted: 'Get Started',
@@ -333,7 +333,7 @@ const translations: Record<Language, Record<string, string>> = {
     fieldAddedToTracking: 'Поле добавлено. Откройте вкладку Поля.',
     // Landing
     landingH1: 'Хватит гадать на погоде. Начните управлять рисками.',
-    landingSub: 'AgroAtlas — первая в ЦА система агро-скоринга с точностью 80% (Coverage Probability). Мы оцифровываем климатические риски, чтобы вы сохранили свой портфель.',
+    landingSub: 'AgroRisk — первая в ЦА система агро-скоринга с точностью 80% (Coverage Probability). Мы оцифровываем климатические риски, чтобы вы сохранили свой портфель.',
     signIn: 'Войти',
     signUp: 'Регистрация',
     getStarted: 'Начать',
@@ -505,7 +505,7 @@ const translations: Record<Language, Record<string, string>> = {
     fieldAddedToTracking: 'Maydon qo\'shildi. Ko\'rish uchun Maydonlar yorlig\'ini oching.',
     // Landing
     landingH1: 'Ob-havoga taslim bo\'lishni to\'xtating. Riskni hisoblang.',
-    landingSub: 'AgroAtlas — Markaziy Osiyoda 80% qamrov ehtimolligiga ega birinchi agro-skor tizimi. Iqlim risklarini raqamlashtiramiz, portfelingizni saqlaysiz.',
+    landingSub: 'AgroRisk — Markaziy Osiyoda 80% qamrov ehtimolligiga ega birinchi agro-skor tizimi. Iqlim risklarini raqamlashtiramiz, portfelingizni saqlaysiz.',
     signIn: 'Kirish',
     signUp: 'Ro\'yxatdan o\'tish',
     getStarted: 'Boshlash',

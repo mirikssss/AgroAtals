@@ -13,9 +13,36 @@ import {
   RotateCcw,
   Map,
   Satellite,
-  Mountain
+  Mountain,
+  Grid3X3,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import type L from 'leaflet'
+
+// Types for GeoJSON
+interface GeoJSONData {
+  type: 'FeatureCollection'
+  features: any[]
+}
+
+// Exact mapping from region names to file names
+const regionFileMap: Record<string, string> = {
+  'Toshkent sh.': 'toshkent',
+  'Toshkent viloyati': 'toshkent',
+  'Namangan viloyati': 'namangan',
+  "Farg'ona viloyati": 'fargona',
+  'Andijon viloyati': 'andijon',
+  'Sirdaryo viloyati': 'sirdaryo',
+  'Jizzax viloyati': 'jizzax',
+  'Navoiy viloyati': 'navoiy',
+  'Samarqand viloyati': 'samarqand',
+  'Qashqadaryo viloyati': 'qashqadaryo',
+  'Surxondaryo viloyati': 'surxondaryo',
+  'Buxoro viloyati': 'buxoro',
+  'Xorazm viloyati': 'xorazm',
+  'Qoraqalpogʻiston Respublikasi': 'qoraqalpogiston',
+}
 
 // Types
 export interface DrawnArea {
@@ -80,6 +107,14 @@ export function DrawMap({
   const [leaflet, setLeaflet] = useState<typeof L | null>(null)
   const [mapType, setMapType] = useState<'street' | 'satellite' | 'hybrid'>('satellite')
   const tileLayerRef = useRef<L.TileLayer | null>(null)
+  
+  // Administrative boundaries state
+  const [showBoundaries, setShowBoundaries] = useState(true)
+  const [regionsGeoJSON, setRegionsGeoJSON] = useState<GeoJSONData | null>(null)
+  const [allDistrictsGeoJSON, setAllDistrictsGeoJSON] = useState<GeoJSONData | null>(null)
+  const regionsLayerRef = useRef<L.GeoJSON | null>(null)
+  const districtsLayerRef = useRef<L.GeoJSON | null>(null)
+  const [hoveredRegion, setHoveredRegion] = useState<string | null>(null)
 
   // Load Leaflet dynamically (client-side only)
   useEffect(() => {
@@ -91,6 +126,43 @@ export function DrawMap({
     }
     
     loadLeaflet()
+  }, [])
+
+  // Load GeoJSON data for regions and districts
+  useEffect(() => {
+    // Load regions
+    fetch('/regions.json')
+      .then(res => res.json())
+      .then(data => setRegionsGeoJSON(data))
+      .catch(err => console.error('Failed to load regions:', err))
+
+    // Load all districts from all regions
+    const loadAllDistricts = async () => {
+      const allFeatures: any[] = []
+      
+      for (const [regionName, fileName] of Object.entries(regionFileMap)) {
+        try {
+          const res = await fetch(`/districts/${fileName}.json`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.features) {
+              allFeatures.push(...data.features)
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to load districts for ${regionName}:`, err)
+        }
+      }
+      
+      if (allFeatures.length > 0) {
+        setAllDistrictsGeoJSON({
+          type: 'FeatureCollection',
+          features: allFeatures
+        })
+      }
+    }
+    
+    loadAllDistricts()
   }, [])
 
   // Initialize map
@@ -166,6 +238,125 @@ export function DrawMap({
       mapRef.current = null
     }
   }, [leaflet, initialCenter, initialZoom, onAreaDrawn])
+
+  // Add/remove boundary layers when showBoundaries changes or GeoJSON loads
+  useEffect(() => {
+    if (!mapRef.current || !leaflet || !isLoaded) return
+
+    const L = leaflet
+
+    // Remove existing layers first
+    if (regionsLayerRef.current) {
+      mapRef.current.removeLayer(regionsLayerRef.current)
+      regionsLayerRef.current = null
+    }
+    if (districtsLayerRef.current) {
+      mapRef.current.removeLayer(districtsLayerRef.current)
+      districtsLayerRef.current = null
+    }
+
+    if (!showBoundaries) return
+
+    // Helper function to normalize geometry
+    const normalizeGeoJSON = (data: GeoJSONData): GeoJSONData => ({
+      ...data,
+      features: data.features.map(feature => {
+        if (feature.geometry && feature.geometry.geometries) {
+          return { ...feature, geometry: feature.geometry.geometries[0] }
+        }
+        return feature
+      })
+    })
+
+    // Add regions layer (thicker borders - yellow)
+    if (regionsGeoJSON) {
+      const normalizedRegions = normalizeGeoJSON(regionsGeoJSON)
+      const regionsLayer = L.geoJSON(normalizedRegions as any, {
+        style: () => ({
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          weight: 3,
+          color: '#facc15', // Yellow
+          opacity: 0.9,
+        }),
+        onEachFeature: (feature: any, layer: any) => {
+          const name = feature.properties?.name || feature.properties?.ADM1_EN || 'Unknown'
+          layer.bindTooltip(name, {
+            permanent: false,
+            direction: 'auto',
+            className: 'region-tooltip'
+          })
+          
+          layer.on({
+            mouseover: (e: any) => {
+              setHoveredRegion(name)
+              e.target.setStyle({
+                weight: 4,
+                color: '#fbbf24',
+                fillColor: '#fbbf24',
+                fillOpacity: 0.1,
+              })
+            },
+            mouseout: (e: any) => {
+              setHoveredRegion(null)
+              e.target.setStyle({
+                weight: 3,
+                color: '#facc15',
+                fillColor: 'transparent',
+                fillOpacity: 0,
+              })
+            },
+          })
+        }
+      })
+      regionsLayer.addTo(mapRef.current)
+      regionsLayerRef.current = regionsLayer
+    }
+
+    // Add districts layer (thinner borders - white)
+    if (allDistrictsGeoJSON) {
+      const normalizedDistricts = normalizeGeoJSON(allDistrictsGeoJSON)
+      const districtsLayer = L.geoJSON(normalizedDistricts as any, {
+        style: () => ({
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          weight: 1,
+          color: '#ffffff', // White
+          opacity: 0.6,
+          dashArray: '3, 3',
+        }),
+        onEachFeature: (feature: any, layer: any) => {
+          const name = feature.properties?.name || feature.properties?.ADM2_EN || 'Unknown'
+          layer.bindTooltip(name, {
+            permanent: false,
+            direction: 'auto',
+            className: 'district-tooltip'
+          })
+          
+          layer.on({
+            mouseover: (e: any) => {
+              e.target.setStyle({
+                weight: 2,
+                color: '#ffffff',
+                fillColor: '#ffffff',
+                fillOpacity: 0.15,
+              })
+            },
+            mouseout: (e: any) => {
+              e.target.setStyle({
+                weight: 1,
+                color: '#ffffff',
+                fillColor: 'transparent',
+                fillOpacity: 0,
+              })
+            },
+          })
+        }
+      })
+      districtsLayer.addTo(mapRef.current)
+      districtsLayerRef.current = districtsLayer
+    }
+  }, [leaflet, isLoaded, showBoundaries, regionsGeoJSON, allDistrictsGeoJSON])
 
   // Extract area data from drawn layer
   const extractAreaData = (layer: any, layerType: string): DrawnArea => {
@@ -394,7 +585,7 @@ export function DrawMap({
         </div>
 
         {/* Map Type Switcher */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 border-r border-border/50 pr-2">
           <Button
             variant={mapType === 'street' ? 'default' : 'ghost'}
             size="sm"
@@ -423,6 +614,28 @@ export function DrawMap({
             <Mountain className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* Boundaries Toggle */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant={showBoundaries ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setShowBoundaries(!showBoundaries)}
+            className={showBoundaries ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
+            title={showBoundaries ? 'Hide Boundaries' : 'Show Boundaries'}
+          >
+            <Grid3X3 className="w-4 h-4" />
+            {showBoundaries ? <Eye className="w-3 h-3 ml-1" /> : <EyeOff className="w-3 h-3 ml-1" />}
+          </Button>
+        </div>
+
+        {/* Hovered region info */}
+        {hoveredRegion && !drawnArea && (
+          <div className="ml-auto flex items-center gap-2 text-sm text-yellow-600">
+            <MapPin className="w-4 h-4" />
+            <span className="font-medium">{hoveredRegion}</span>
+          </div>
+        )}
 
         {/* Area info */}
         {drawnArea && (
@@ -454,13 +667,45 @@ export function DrawMap({
 
       {/* Instructions */}
       <div className="bg-gray-50 dark:bg-gray-800/50 p-3 text-xs text-muted-foreground border-t border-border/50">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <span><kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px]">□</kbd> Draw rectangle</span>
           <span><kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px]">⬠</kbd> Draw polygon</span>
           <span><kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px]">✎</kbd> Edit shape</span>
+          <span className="text-yellow-600"><span className="inline-block w-3 h-0.5 bg-yellow-500 mr-1"></span> Region borders</span>
+          <span className="text-gray-400"><span className="inline-block w-3 h-0.5 bg-white border border-gray-300 mr-1"></span> District borders</span>
           <span className="ml-auto">Draw your agricultural area on the map</span>
         </div>
       </div>
+
+      {/* Tooltip Styles */}
+      <style jsx global>{`
+        .region-tooltip {
+          background-color: #fef3c7 !important;
+          border: 1px solid #f59e0b !important;
+          border-radius: 4px !important;
+          padding: 4px 8px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          color: #92400e !important;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        }
+        .region-tooltip::before {
+          border-top-color: #f59e0b !important;
+        }
+        .district-tooltip {
+          background-color: white !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 4px !important;
+          padding: 4px 8px !important;
+          font-size: 11px !important;
+          font-weight: 500 !important;
+          color: #374151 !important;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+        }
+        .district-tooltip::before {
+          border-top-color: #d1d5db !important;
+        }
+      `}</style>
     </Card>
   )
 }

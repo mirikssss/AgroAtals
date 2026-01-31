@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,10 +46,9 @@ import {
   BarChart3,
   ArrowRight,
   MapPin,
-  ArrowLeft,
 } from 'lucide-react'
 import { useLanguage } from '@/lib/language-context'
-import { mockDistrictData, centralAsianCountries, availableYears } from '@/data/regions-data'
+import { mockDistrictData } from '@/data/regions-data'
 import { 
   useAIRecommendation, 
   AIRecommendationTrigger, 
@@ -68,75 +67,6 @@ const DrawMap = dynamic(() => import('@/components/draw-map'), {
   )
 })
 
-// Dynamic import for Leaflet Map (client-side only)
-const LeafletMap = dynamic(
-  () => import('./leaflet-map-inner').then(mod => mod.LeafletMapInner),
-  { 
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-[#eff6ff]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Loading map...</p>
-        </div>
-      </div>
-    )
-  }
-)
-
-// Types for GeoJSON
-interface GeoJSONFeature {
-  type: 'Feature'
-  properties: {
-    name?: string
-    ADM1_EN?: string
-    ADM1_RU?: string
-    [key: string]: any
-  }
-  geometry: any
-}
-
-interface GeoJSONData {
-  type: 'FeatureCollection'
-  features: GeoJSONFeature[]
-}
-
-// Exact mapping from region names to file names
-const regionFileMap: Record<string, string> = {
-  'Toshkent sh.': 'toshkent',
-  'Toshkent viloyati': 'toshkent',
-  'Namangan viloyati': 'namangan',
-  "Farg'ona viloyati": 'fargona',
-  'Andijon viloyati': 'andijon',
-  'Sirdaryo viloyati': 'sirdaryo',
-  'Jizzax viloyati': 'jizzax',
-  'Navoiy viloyati': 'navoiy',
-  'Samarqand viloyati': 'samarqand',
-  'Qashqadaryo viloyati': 'qashqadaryo',
-  'Surxondaryo viloyati': 'surxondaryo',
-  'Buxoro viloyati': 'buxoro',
-  'Xorazm viloyati': 'xorazm',
-  'Qoraqalpogʻiston Respublikasi': 'qoraqalpogiston',
-}
-
-// District center coordinates (approximate)
-const districtCenters: Record<string, [number, number]> = {
-  // Default centers for regions
-  'Toshkent viloyati': [41.3, 69.3],
-  'Namangan viloyati': [41.0, 71.0],
-  "Farg'ona viloyati": [40.4, 71.8],
-  'Andijon viloyati': [40.8, 72.3],
-  'Sirdaryo viloyati': [40.5, 68.7],
-  'Jizzax viloyati': [40.1, 67.8],
-  'Navoiy viloyati': [42.0, 65.4],
-  'Samarqand viloyati': [39.7, 66.9],
-  'Qashqadaryo viloyati': [38.9, 66.0],
-  'Surxondaryo viloyati': [37.9, 67.3],
-  'Buxoro viloyati': [40.0, 64.4],
-  'Xorazm viloyati': [41.5, 60.6],
-  'Qoraqalpogʻiston Respublikasi': [43.0, 59.0],
-}
-
 // Types
 type AnalysisPhase = 'input' | 'analyzing' | 'results'
 
@@ -147,8 +77,6 @@ interface LoanParams {
   crop: string
   hectares: string
   drawnArea: DrawnArea | null
-  selectedRegion: string
-  selectedDistrict: string
 }
 
 interface AnalysisResult {
@@ -229,71 +157,7 @@ export function AnalyticsModule() {
     crop: 'cotton',
     hectares: '150',
     drawnArea: null,
-    selectedRegion: '',
-    selectedDistrict: '',
   })
-  
-  // Region Selection Map State
-  const [regionsGeoJSON, setRegionsGeoJSON] = useState<GeoJSONData | null>(null)
-  const [districtsGeoJSON, setDistrictsGeoJSON] = useState<GeoJSONData | null>(null)
-  const [isLoadingDistricts, setIsLoadingDistricts] = useState(false)
-  const [hoveredArea, setHoveredArea] = useState<string | null>(null)
-  const [shouldFitBounds, setShouldFitBounds] = useState(true)
-  const [mapCenter, setMapCenter] = useState<[number, number]>([41.3775, 64.5853])
-  
-  // Get current country data
-  const currentCountry = useMemo(() => centralAsianCountries[0], []) // Uzbekistan
-  
-  // Get regions list from GeoJSON
-  const regionsList = useMemo(() => {
-    if (!regionsGeoJSON) return []
-    return regionsGeoJSON.features.map(f => ({
-      name: f.properties.name || f.properties.ADM1_EN || '',
-      nameRu: f.properties.ADM1_RU || ''
-    }))
-  }, [regionsGeoJSON])
-  
-  // Load regions GeoJSON on mount
-  useEffect(() => {
-    fetch('/regions.json')
-      .then(res => res.json())
-      .then(data => {
-        setRegionsGeoJSON(data)
-        setShouldFitBounds(true)
-      })
-      .catch(err => console.error('Failed to load regions GeoJSON:', err))
-  }, [])
-  
-  // Load districts when region is selected
-  useEffect(() => {
-    if (loanParams.selectedRegion && loanParams.selectedRegion !== 'all') {
-      setIsLoadingDistricts(true)
-      const fileName = regionFileMap[loanParams.selectedRegion]
-      
-      if (!fileName) {
-        setIsLoadingDistricts(false)
-        return
-      }
-      
-      fetch(`/districts/${fileName}.json`)
-        .then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          return res.json()
-        })
-        .then(data => {
-          setDistrictsGeoJSON(data)
-          setIsLoadingDistricts(false)
-          setShouldFitBounds(true)
-        })
-        .catch(err => {
-          console.error('Failed to load districts GeoJSON:', err)
-          setIsLoadingDistricts(false)
-          setDistrictsGeoJSON(null)
-        })
-    } else {
-      setDistrictsGeoJSON(null)
-    }
-  }, [loanParams.selectedRegion])
 
   // Handle form changes
   const handleInputChange = (field: keyof LoanParams, value: string) => {
@@ -312,56 +176,6 @@ export function AnalyticsModule() {
       hectares: area?.area ? area.area.toFixed(0) : prev.hectares,
     }))
   }, [])
-  
-  // Handle region click (from map)
-  const handleRegionClick = useCallback((regionName: string) => {
-    setLoanParams(prev => ({
-      ...prev,
-      selectedRegion: regionName,
-      selectedDistrict: '',
-    }))
-    setShouldFitBounds(true)
-    // Update map center for the region
-    const center = districtCenters[regionName]
-    if (center) {
-      setMapCenter(center)
-    }
-  }, [])
-  
-  // Handle district click
-  const handleDistrictClick = useCallback((districtName: string) => {
-    setLoanParams(prev => ({
-      ...prev,
-      selectedDistrict: districtName,
-    }))
-    setShouldFitBounds(false)
-  }, [])
-  
-  // Handle area hover
-  const handleAreaHover = useCallback((areaName: string | null) => {
-    setHoveredArea(areaName)
-  }, [])
-  
-  // Handle bounds fitted
-  const handleBoundsFitted = useCallback(() => {
-    setShouldFitBounds(false)
-  }, [])
-  
-  // Handle back to regions
-  const handleBackToRegions = useCallback(() => {
-    setLoanParams(prev => ({
-      ...prev,
-      selectedRegion: '',
-      selectedDistrict: '',
-    }))
-    setDistrictsGeoJSON(null)
-    setShouldFitBounds(true)
-    setMapCenter([41.3775, 64.5853])
-  }, [])
-  
-  // Current GeoJSON to display
-  const currentGeoJSON = loanParams.selectedRegion && districtsGeoJSON ? districtsGeoJSON : regionsGeoJSON
-  const isShowingDistricts = loanParams.selectedRegion && districtsGeoJSON !== null
 
   // Calculate DSCR
   const calculateDSCR = (loanAmount: number, rate: number, years: number, expectedRevenue: number) => {
@@ -428,8 +242,8 @@ export function AnalyticsModule() {
       annualDebtService,
       expectedRevenue,
       assetName: `${loanParams.crop.charAt(0).toUpperCase() + loanParams.crop.slice(1)} Field`,
-      region: loanParams.selectedRegion || 'Uzbekistan',
-      district: loanParams.selectedDistrict || locationName,
+      region: 'Uzbekistan',
+      district: locationName,
     })
 
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -452,17 +266,6 @@ export function AnalyticsModule() {
           onInputChange={handleInputChange}
           onAreaDrawn={handleAreaDrawn}
           onAnalyze={runAnalysis}
-          currentGeoJSON={currentGeoJSON}
-          isShowingDistricts={!!isShowingDistricts}
-          isLoadingDistricts={isLoadingDistricts}
-          hoveredArea={hoveredArea}
-          shouldFitBounds={shouldFitBounds}
-          mapCenter={mapCenter}
-          onRegionClick={handleRegionClick}
-          onDistrictClick={handleDistrictClick}
-          onAreaHover={handleAreaHover}
-          onBoundsFitted={handleBoundsFitted}
-          onBackToRegions={handleBackToRegions}
         />
       )}
 
@@ -491,131 +294,27 @@ interface InputPhaseProps {
   onInputChange: (field: keyof LoanParams, value: string) => void
   onAreaDrawn: (area: DrawnArea | null) => void
   onAnalyze: () => void
-  // Region map props
-  currentGeoJSON: GeoJSONData | null
-  isShowingDistricts: boolean
-  isLoadingDistricts: boolean
-  hoveredArea: string | null
-  shouldFitBounds: boolean
-  mapCenter: [number, number]
-  onRegionClick: (regionName: string) => void
-  onDistrictClick: (districtName: string) => void
-  onAreaHover: (areaName: string | null) => void
-  onBoundsFitted: () => void
-  onBackToRegions: () => void
 }
 
-function InputPhase({ 
-  loanParams, 
-  onInputChange, 
-  onAreaDrawn, 
-  onAnalyze,
-  currentGeoJSON,
-  isShowingDistricts,
-  isLoadingDistricts,
-  hoveredArea,
-  shouldFitBounds,
-  mapCenter,
-  onRegionClick,
-  onDistrictClick,
-  onAreaHover,
-  onBoundsFitted,
-  onBackToRegions,
-}: InputPhaseProps) {
+function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze }: InputPhaseProps) {
   const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
-  const hasSelectedLocation = loanParams.selectedRegion && loanParams.selectedDistrict
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold text-foreground">Credit Risk Analytics</h2>
         <p className="text-muted-foreground">
-          Select a region, choose a district, then draw the agricultural area
+          Enter loan parameters and draw the agricultural area on the map
         </p>
       </div>
 
-      {/* Step 1: Region Selection Map */}
-      <Card className="p-6 border-border/50 shadow-sm">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between pb-4 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-semibold text-sm">1</span>
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">Select Region & District</h3>
-            </div>
-            {loanParams.selectedRegion && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                  <MapPin className="w-3 h-3 mr-1" />
-                  {loanParams.selectedDistrict || loanParams.selectedRegion}
-                </Badge>
-              </div>
-            )}
-          </div>
-          
-          {/* Back button when viewing districts */}
-          {isShowingDistricts && (
-            <button
-              onClick={onBackToRegions}
-              className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Regions
-            </button>
-          )}
-          
-          {/* Interactive Map */}
-          <div className="h-[400px] rounded-lg overflow-hidden border border-border/50 relative">
-            {isLoadingDistricts && (
-              <div className="absolute inset-0 bg-background/80 z-10 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-            
-            {currentGeoJSON ? (
-              <LeafletMap
-                geoJSONData={currentGeoJSON}
-                center={mapCenter}
-                zoom={isShowingDistricts ? 8 : 6}
-                onAreaHover={onAreaHover}
-                onAreaClick={isShowingDistricts ? onDistrictClick : onRegionClick}
-                hoveredArea={hoveredArea}
-                selectedArea={loanParams.selectedDistrict || null}
-                isShowingDistricts={isShowingDistricts}
-                shouldFitBounds={shouldFitBounds}
-                onBoundsFitted={onBoundsFitted}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-[#eff6ff] dark:bg-slate-900">
-                <div className="text-center">
-                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Loading map...</p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          {/* Instructions */}
-          <div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground">
-            {!loanParams.selectedRegion ? (
-              <span>👆 Click on a region to zoom in and see districts</span>
-            ) : !loanParams.selectedDistrict ? (
-              <span>👆 Click on a district to select it for analysis</span>
-            ) : (
-              <span className="text-primary font-medium">✓ District selected: {loanParams.selectedDistrict}</span>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      {/* Step 2: Loan Parameters Card */}
+      {/* Loan Parameters Card */}
       <Card className="p-6 border-border/50 shadow-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-2 pb-4 border-b border-border/50">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-primary font-semibold text-sm">2</span>
+              <span className="text-primary font-semibold text-sm">1</span>
             </div>
             <h3 className="text-lg font-semibold text-foreground">Loan Parameters</h3>
           </div>
@@ -668,7 +367,7 @@ function InputPhase({
           <div className="flex items-center justify-between pb-4 border-b border-border/50">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-semibold text-sm">3</span>
+                <span className="text-primary font-semibold text-sm">2</span>
               </div>
               <h3 className="text-lg font-semibold text-foreground">Draw Agricultural Area</h3>
             </div>

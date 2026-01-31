@@ -18,28 +18,33 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import type { GeminiResponse, RegionData } from '@/lib/gemini'
+import { useLanguage } from '@/lib/language-context'
 
 interface InlineAIRecommendationProps {
   regionData: Partial<RegionData>
   isHighRisk?: boolean
 }
 
-// Hook to manage AI recommendation state
-export function useAIRecommendation(regionData: Partial<RegionData>) {
+// Hook to manage AI recommendation state. Pass language so Gemini responds in selected language.
+export function useAIRecommendation(regionData: Partial<RegionData>, language?: string) {
+  const { language: contextLang } = useLanguage()
+  const lang = language ?? contextLang
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [recommendation, setRecommendation] = useState<GeminiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const apiBase = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
 
   const fetchRecommendation = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/recommend', {
+      const response = await fetch(`${apiBase}/dashboard/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(regionData)
+        body: JSON.stringify({ ...regionData, language: lang })
       })
 
       if (!response.ok) {

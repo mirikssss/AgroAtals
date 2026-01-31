@@ -274,6 +274,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   }, [selectedCountry])
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
+  const { language } = useLanguage()
 
   const fetchDashboardMetrics = useCallback(async () => {
     const scope = selectedDistrict
@@ -291,6 +292,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
       url.searchParams.set('country', selectedCountry)
       url.searchParams.set('year', String(yearValue))
       url.searchParams.set('scope', scope)
+      url.searchParams.set('lang', language)
       if (areaName) {
         url.searchParams.set('area_name', areaName)
       }
@@ -314,7 +316,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
     } finally {
       setIsKpiLoading(false)
     }
-  }, [apiBaseUrl, selectedCountry, selectedRegion, selectedDistrict, selectedYear])
+  }, [apiBaseUrl, selectedCountry, selectedRegion, selectedDistrict, selectedYear, language])
 
   useEffect(() => {
     fetchDashboardMetrics()
@@ -339,10 +341,10 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             confidenceLabel: selectedDistrictData.confidenceLabel,
           }
         : { location: displayName }
-      const res = await fetch('/api/explain-kpi', {
+      const res = await fetch(`${apiBaseUrl}/dashboard/explain-kpi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, ...metrics }),
+        body: JSON.stringify({ cardId, ...metrics, language }),
       })
       const data = await res.json()
       setExplainText(data.explanation || 'Не удалось загрузить объяснение.')
@@ -353,11 +355,51 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
     } finally {
       setExplainLoading(false)
     }
-  }, [displayName, selectedDistrictData])
+  }, [displayName, selectedDistrictData, language])
 
   // Current GeoJSON to display
   const currentGeoJSON = selectedRegion !== 'all' && districtsGeoJSON ? districtsGeoJSON : regionsGeoJSON
   const isShowingDistricts = selectedRegion !== 'all' && districtsGeoJSON !== null
+
+  // Yield anomaly per area (region or district) for map coloring
+  const [yieldAnomalyByArea, setYieldAnomalyByArea] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (selectedCountry !== 'UZB' || !currentGeoJSON?.features?.length) {
+      setYieldAnomalyByArea({})
+      return
+    }
+    const yearValue = selectedYear === 'current' ? new Date().getFullYear() : Number(selectedYear)
+    const scope = isShowingDistricts ? 'district' : 'region'
+    const getAreaName = (f: GeoJSONFeature) => f.properties?.name || f.properties?.ADM1_EN || ''
+    const areaNames = currentGeoJSON.features.map(getAreaName).filter(Boolean)
+    const crop = 'wheat'
+
+    Promise.all(
+      areaNames.map(async (areaName) => {
+        try {
+          const url = new URL('/dashboard/metrics', apiBaseUrl)
+          url.searchParams.set('country', selectedCountry)
+          url.searchParams.set('year', String(yearValue))
+          url.searchParams.set('scope', scope)
+          url.searchParams.set('area_name', areaName)
+          url.searchParams.set('crop', crop)
+          const res = await fetch(url.toString())
+          if (!res.ok) return { areaName, p50: null as number | null }
+          const data = await res.json()
+          return { areaName, p50: typeof data.p50 === 'number' ? data.p50 : null }
+        } catch {
+          return { areaName, p50: null as number | null }
+        }
+      })
+    ).then((results) => {
+      const byArea: Record<string, number> = {}
+      results.forEach(({ areaName, p50 }) => {
+        if (p50 != null) byArea[areaName] = p50
+      })
+      setYieldAnomalyByArea(byArea)
+    })
+  }, [selectedCountry, selectedYear, currentGeoJSON, isShowingDistricts, apiBaseUrl])
 
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
@@ -396,6 +438,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 isShowingDistricts={isShowingDistricts}
                 shouldFitBounds={shouldFitBounds}
                 onBoundsFitted={handleBoundsFitted}
+                yieldAnomalyByArea={yieldAnomalyByArea}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-[#eff6ff] dark:bg-slate-900">

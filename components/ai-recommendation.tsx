@@ -36,12 +36,14 @@ export function AIRecommendation({ regionData, isHighRisk = false, compact = fal
   const [recommendation, setRecommendation] = useState<GeminiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const apiBase = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
+
   const fetchRecommendation = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/recommend', {
+      const response = await fetch(`${apiBase}/dashboard/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(regionData)

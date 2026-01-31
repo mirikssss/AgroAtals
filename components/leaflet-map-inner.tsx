@@ -36,6 +36,16 @@ interface LeafletMapInnerProps {
   isShowingDistricts: boolean
   shouldFitBounds: boolean
   onBoundsFitted: () => void
+  /** Yield anomaly % per area name (region/district) for fill color */
+  yieldAnomalyByArea?: Record<string, number>
+}
+
+// Color by Yield Anomaly: < -15% red, -15..-5% orange, -5..+5% neutral, > +5% green
+function getColorByAnomaly(anomaly: number): string {
+  if (anomaly < -15) return '#FF4D4D'
+  if (anomaly < -5) return '#FFA726'
+  if (anomaly <= 5) return '#E0E0E0'
+  return '#66BB6A'
 }
 
 // Normalize geometry - handle nested geometries structure
@@ -110,27 +120,30 @@ export function LeafletMapInner({
   selectedArea,
   isShowingDistricts,
   shouldFitBounds,
-  onBoundsFitted
+  onBoundsFitted,
+  yieldAnomalyByArea,
 }: LeafletMapInnerProps) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null)
   const normalizedData = normalizeGeoJSON(geoJSONData)
   
-  // Base style for all areas - transparent fill with clean borders
+  // Style: fill by Yield Anomaly when data available, else neutral
   const getStyle = useCallback((feature: GeoJSONFeature | undefined): PathOptions => {
     if (!feature) return {}
     
     const areaName = getAreaName(feature)
     const isHovered = areaName === hoveredArea
     const isSelected = areaName === selectedArea
+    const anomaly = yieldAnomalyByArea?.[areaName]
+    const fillColor = anomaly != null ? getColorByAnomaly(anomaly) : 'rgba(255, 255, 255, 0.15)'
     
     return {
-      fillColor: 'rgba(255, 255, 255, 0.1)',
+      fillColor,
       weight: isHovered || isSelected ? 2 : 1,
       opacity: 1,
       color: isHovered || isSelected ? '#1e40af' : '#ffffff',
-      fillOpacity: isHovered ? 0.25 : isSelected ? 0.2 : 0.12,
+      fillOpacity: isHovered ? 0.75 : isSelected ? 0.7 : 0.65,
     }
-  }, [hoveredArea, selectedArea])
+  }, [hoveredArea, selectedArea, yieldAnomalyByArea])
   
   // Event handlers for each feature
   const onEachFeature = useCallback((feature: GeoJSONFeature, layer: Layer) => {
@@ -153,10 +166,13 @@ export function LeafletMapInner({
         
         const target = e.target
         const isSelected = areaName === selectedArea
+        const anomaly = yieldAnomalyByArea?.[areaName]
+        const fillColor = anomaly != null ? getColorByAnomaly(anomaly) : 'rgba(255, 255, 255, 0.15)'
         target.setStyle({
+          fillColor,
           weight: isSelected ? 2 : 1,
-          color: isSelected ? '#1e40af' : '#9ca3af',
-          fillOpacity: isSelected ? 0.8 : 0.5,
+          color: isSelected ? '#1e40af' : '#ffffff',
+          fillOpacity: isSelected ? 0.7 : 0.65,
         })
       },
       click: () => {
@@ -170,14 +186,14 @@ export function LeafletMapInner({
       direction: 'auto',
       className: 'leaflet-tooltip-custom'
     })
-  }, [onAreaHover, onAreaClick, selectedArea])
+  }, [onAreaHover, onAreaClick, selectedArea, yieldAnomalyByArea])
   
   // Update styles when selection changes
   useEffect(() => {
     if (geoJsonRef.current) {
       geoJsonRef.current.setStyle((feature) => getStyle(feature as GeoJSONFeature))
     }
-  }, [hoveredArea, selectedArea, getStyle])
+  }, [hoveredArea, selectedArea, getStyle, yieldAnomalyByArea])
 
   // Generate a stable key for the GeoJSON layer
   const geoJsonKey = normalizedData.features.map(f => getAreaName(f)).join(',')
@@ -217,6 +233,31 @@ export function LeafletMapInner({
         shouldFitBounds={shouldFitBounds}
         onBoundsFitted={onBoundsFitted}
       />
+
+      {/* Risk map legend: Yield Anomaly → color */}
+      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-white/80 bg-white/95 px-3 py-2 shadow-md backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95">
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+          Risk map (Yield Anomaly)
+        </p>
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FF4D4D' }} />
+            <span className="text-gray-600 dark:text-gray-400">Critical (&lt;-15%)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FFA726' }} />
+            <span className="text-gray-600 dark:text-gray-400">Moderate loss (-15% to -5%)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#E0E0E0' }} />
+            <span className="text-gray-600 dark:text-gray-400">Stable (±5%)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#66BB6A' }} />
+            <span className="text-gray-600 dark:text-gray-400">Growth (&gt;+5%)</span>
+          </div>
+        </div>
+      </div>
       
       {/* Custom CSS for tooltips and controls */}
       <style jsx global>{`

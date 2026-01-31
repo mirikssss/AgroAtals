@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input"
 import React from "react"
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useLanguage } from '@/lib/language-context'
 import { Card } from '@/components/ui/card'
@@ -23,14 +23,33 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { AlertTriangle, TrendingUp, TrendingDown, Gauge, MapPin, Satellite, BarChart3, Download, Settings, LogOut, AlertCircle, CheckCircle, Plus, Bell } from 'lucide-react'
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  ComposedChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ReferenceLine,
+  ReferenceArea,
+} from 'recharts'
+import { AlertTriangle, TrendingUp, TrendingDown, Gauge, MapPin, Satellite, BarChart3, Download, Settings, LogOut, AlertCircle, CheckCircle, Plus, Bell, Target, Thermometer, Activity } from 'lucide-react'
 import { CentralAsiaMap } from '@/components/central-asia-map'
 import { ProfilePopup } from '@/components/profile-popup'
 import { InteractiveRiskMap } from '@/components/interactive-risk-map'
 import { DashboardKPI } from '@/components/dashboard-kpi'
 import { GeographicHeatmap } from '@/components/geographic-heatmap'
 import { AnalyticsModule } from '@/components/analytics-module'
+import { getFields, getFieldById, removeField, type SavedFieldMetadata } from '@/lib/fields-db'
 
 const sampleNDVIData = [
   { month: 'Jan', ndvi: 0.3, expected: 0.35 },
@@ -529,6 +548,241 @@ function AnalyticsSection() {
   )
 }
 
+const DASHBOARD_API_URL = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
+
+interface ChartDataState {
+  ndviAnomalyTimeline: Array<{ year: number; anomaly: number; baseline?: number }>
+  riskDistribution: Array<{ name: string; value: number; color: string }>
+  precipVsVegetation: Array<{ year: number; precipitation: number; ndvi: number }>
+}
+
+function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack: () => void }) {
+  const { t } = useLanguage()
+  const [chartData, setChartData] = useState<ChartDataState>({
+    ndviAnomalyTimeline: [],
+    riskDistribution: [
+      { name: 'Low Risk', value: 33, color: '#10B981' },
+      { name: 'Moderate Risk', value: 34, color: '#f59e0b' },
+      { name: 'High Risk', value: 33, color: '#ef4444' },
+    ],
+    precipVsVegetation: [],
+  })
+
+  useEffect(() => {
+    const url = new URL('/dashboard/chart-data', DASHBOARD_API_URL)
+    url.searchParams.set('country', 'UZB')
+    url.searchParams.set('crop', field.crop.toLowerCase())
+    url.searchParams.set('scope', 'country')
+    fetch(url.toString())
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then(setChartData)
+      .catch(() => {})
+  }, [field.crop])
+
+  const r = field.result
+  const riskLabel = r.riskCategory === 'LOW' ? t('lowRisk') : r.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+          <span>←</span> {t('back')}
+        </Button>
+      </div>
+      <div>
+        <h2 className="text-2xl font-bold text-foreground">{field.assetName}</h2>
+        <p className="text-muted-foreground">{field.region} • {field.district}</p>
+      </div>
+
+      <Card className="p-4 bg-gradient-to-r from-primary/5 to-primary/0 border-primary/20">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="text-center px-4 border-r border-border/50">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">DSCR</p>
+              <p className={`text-2xl font-bold ${r.dscr >= 1.25 ? 'text-[#10B981]' : r.dscr >= 1.0 ? 'text-orange-600' : 'text-red-600'}`}>
+                {r.dscr.toFixed(2)}x
+              </p>
+            </div>
+            <div className="text-center px-4 border-r border-border/50">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
+              <p className="text-xl font-semibold text-foreground">${r.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            </div>
+            <div className="text-center px-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
+              <p className="text-xl font-semibold text-foreground">${r.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            </div>
+          </div>
+          <div className={`px-4 py-2 rounded-lg ${r.dscr >= 1.25 ? 'bg-green-100 dark:bg-green-950/50' : r.dscr >= 1.0 ? 'bg-orange-100 dark:bg-orange-950/50' : 'bg-red-100 dark:bg-red-950/50'}`}>
+            <span className="text-xs font-medium uppercase opacity-90">{t('creditRiskLabel')}</span>
+            <span className="block font-medium">
+              {r.dscr >= 1.25 ? t('creditworthy') : r.dscr >= 1.0 ? t('marginal') : t('highDefaultRisk')}
+            </span>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4 border-border/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase">{t('predictedYield')}</span>
+            <Target className="w-5 h-5 text-[#10B981]" />
+          </div>
+          <p className="text-2xl font-bold text-foreground">{r.predictedYield.toFixed(1)} t/ha</p>
+          <p className="text-xs text-muted-foreground">{t('vs5YearAverage')}: {r.p50 > 0 ? '+' : ''}{r.p50.toFixed(1)}%</p>
+        </Card>
+        <Card className="p-4 border-border/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase">{t('yieldAnomaly')}</span>
+            {r.yieldAnomaly < -10 ? <TrendingDown className="w-5 h-5 text-red-600" /> : <TrendingUp className="w-5 h-5 text-[#10B981]" />}
+          </div>
+          <p className="text-2xl font-bold">{r.yieldAnomaly > 0 ? '+' : ''}{r.yieldAnomaly.toFixed(1)}%</p>
+          <p className="text-xs text-muted-foreground">{t('satelliteDerived')}</p>
+        </Card>
+        <Card className="p-4 border-border/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase">{t('fieldRisk')}</span>
+            <AlertTriangle className="w-5 h-5 text-orange-600" />
+          </div>
+          <p className="text-2xl font-bold text-foreground">{riskLabel}</p>
+          <p className="text-xs text-muted-foreground">{t('satelliteDerived')}</p>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="p-4">
+          <h3 className="font-semibold text-foreground mb-2">{t('ndviAnomalyTimeline')}</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData.ndviAnomalyTimeline.length ? chartData.ndviAnomalyTimeline : [{ year: new Date().getFullYear(), anomaly: 0, baseline: 0 }]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} domain={[-25, 10]} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
+                <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
+                <Line type="monotone" dataKey="anomaly" stroke="var(--primary)" strokeWidth={2} dot={{ r: 4 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <h3 className="font-semibold text-foreground mb-2">{t('riskDistribution')}</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={chartData.riskDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
+                  {chartData.riskDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+                <Tooltip formatter={(value: number) => [`${value}%`, 'Fields']} contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
+                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-xs">{value}</span>} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <h3 className="font-semibold text-foreground mb-2">{t('precipVsVegetation')}</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData.precipVsVegetation.length ? chartData.precipVsVegetation : [{ year: new Date().getFullYear(), precipitation: 0, ndvi: 0 }]} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11 }} stroke="#3b82f6" domain={[0, 500]} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} stroke="#10B981" domain={[0, 1]} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
+                <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
+                <Bar yAxisId="left" dataKey="precipitation" fill="#3b82f6" name="Precipitation (mm)" radius={[4, 4, 0, 0]} fillOpacity={0.7} />
+                <Line yAxisId="right" type="monotone" dataKey="ndvi" stroke="#10B981" name="NDVI Index" strokeWidth={2} dot={{ r: 3 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function FieldsSection() {
+  const { t } = useLanguage()
+  const [fields, setFields] = useState<SavedFieldMetadata[]>([])
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null)
+
+  const refreshFields = useCallback(() => {
+    setFields(getFields())
+  }, [])
+
+  useEffect(() => {
+    if (selectedFieldId === null) refreshFields()
+  }, [selectedFieldId, refreshFields])
+
+  const selectedField = selectedFieldId ? getFieldById(selectedFieldId) : null
+
+  if (selectedField) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-foreground">{t('yourFields')}</h2>
+          <p className="text-sm text-muted-foreground mt-2">{t('analyzedLocations')}</p>
+        </div>
+        <FieldDetailView field={selectedField} onBack={() => setSelectedFieldId(null)} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-foreground">{t('yourFields')}</h2>
+        <p className="text-sm text-muted-foreground mt-2">{t('analyzedLocations')}</p>
+      </div>
+      {fields.length === 0 ? (
+        <Card className="border-border p-12 text-center">
+          <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg font-semibold text-foreground mb-2">{t('noAssetsMatch')}</p>
+          <p className="text-sm text-muted-foreground">{t('createFirstAsset')}</p>
+        </Card>
+      ) : (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left p-3 font-medium text-foreground">{t('location')}</th>
+                <th className="text-left p-3 font-medium text-foreground">{t('crop')}</th>
+                <th className="text-left p-3 font-medium text-foreground">{t('riskLevel')}</th>
+                <th className="text-left p-3 font-medium text-foreground">{t('lastUpdate')}</th>
+                <th className="text-right p-3 font-medium text-foreground"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {fields.map((field) => (
+                <tr key={field.id} className="border-t border-border hover:bg-muted/30">
+                  <td className="p-3">
+                    <p className="font-medium text-foreground">{field.district}</p>
+                    {field.coordinates && <p className="text-xs text-muted-foreground">{field.coordinates}</p>}
+                  </td>
+                  <td className="p-3 text-foreground">{field.crop}</td>
+                  <td className="p-3">
+                    <Badge className={field.result.riskCategory === 'HIGH' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : field.result.riskCategory === 'MODERATE' ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'}>
+                      {field.result.riskCategory === 'LOW' ? t('lowRisk') : field.result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
+                    </Badge>
+                  </td>
+                  <td className="p-3 text-muted-foreground">{new Date(field.addedAt).toLocaleDateString()}</td>
+                  <td className="p-3 text-right">
+                    <Button variant="outline" size="sm" className="mr-2" onClick={() => setSelectedFieldId(field.id)}>
+                      {t('viewResults')}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => { removeField(field.id); refreshFields(); }}>
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const { user, logout } = useAuth()
@@ -555,7 +809,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
             {/* Right side icons */}
             <div className="flex items-center gap-4">
               {/* Notification Icon */}
-              <button className="relative p-2 hover:bg-muted rounded-2xl shadow-[0_14px_40px_-14px_rgba(0,0,0,0.3)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.38)]">
+              <button className="relative p-2 hover:bg-muted rounded-2xl transition-all duration-300 ease-out">
                 <Bell className="w-5 h-5 text-muted-foreground hover:text-foreground" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
               </button>
@@ -578,25 +832,25 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
             <TabsList className="bg-transparent border-b-0 rounded-none h-auto gap-4 p-0 pb-4 w-full justify-start">
               <TabsTrigger
                 value="dashboard"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
               >
                 {t('dashboard')}
               </TabsTrigger>
               <TabsTrigger
                 value="portfolio"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
               >
                 {t('portfolio')}
               </TabsTrigger>
               <TabsTrigger
                 value="analytics"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
               >
                 {t('analytics')}
               </TabsTrigger>
               <TabsTrigger
                 value="fields"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0 shadow-[0_14px_40px_-14px_rgba(0,0,0,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-16px_rgba(0,0,0,0.36)]"
+                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
               >
                 {t('fields')}
               </TabsTrigger>
@@ -609,48 +863,8 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
       <main className="relative z-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && <DashboardOverview />}
         {activeTab === 'portfolio' && <PortfolioSection />}
-        {activeTab === 'analytics' && <AnalyticsModule />}
-        {activeTab === 'fields' && <div className="space-y-8">
-          <div>
-            <h2 className="text-3xl font-bold text-foreground">{t('yourFields')}</h2>
-            <p className="text-sm text-muted-foreground mt-2">{t('analyzedLocations')}</p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            {sampleFields.map((field) => (
-              <Card key={field.id} className="bg-background border border-border/50 shadow-sm p-6 hover:shadow-md transition-shadow">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Location</p>
-                    <p className="font-semibold text-foreground">{field.location}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{field.coordinates}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('location')}</p>
-                      <p className="font-semibold text-foreground">{field.location}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('crop')}</p>
-                      <p className="font-semibold text-foreground">{field.crop}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('riskLevel')}</p>
-                      <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
-                        {field.risk}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold py-5">
-                    View on Map
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>}
+        {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}
+        {activeTab === 'fields' && <FieldsSection />}
       </main>
     </div>
   )

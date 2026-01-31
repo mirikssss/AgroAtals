@@ -56,6 +56,7 @@ import {
 } from '@/components/inline-ai-recommendation'
 import type { RegionData } from '@/lib/gemini'
 import type { DrawnArea } from '@/components/draw-map'
+import { addField } from '@/lib/fields-db'
 
 // Dynamic import for DrawMap (client-side only)
 const DrawMap = dynamic(() => import('@/components/draw-map'), { 
@@ -99,48 +100,34 @@ interface AnalysisResult {
   assetName: string
   region: string
   district: string
+  // AI tips from API (Gemini) — фишка продукта
+  aiTips: string[]
 }
 
-// Mock NDVI Anomaly Data (2015-2023)
-const ndviAnomalyData = [
-  { year: 2015, anomaly: 2.5, baseline: 0 },
-  { year: 2016, anomaly: 5.2, baseline: 0 },
-  { year: 2017, anomaly: -3.8, baseline: 0 },
-  { year: 2018, anomaly: 1.2, baseline: 0 },
-  { year: 2019, anomaly: -6.5, baseline: 0 },
-  { year: 2020, anomaly: 4.1, baseline: 0 },
-  { year: 2021, anomaly: -18.5, baseline: 0 }, // Drought year
-  { year: 2022, anomaly: -8.2, baseline: 0 },
-  { year: 2023, anomaly: -4.5, baseline: 0 },
-]
+// Chart data types (from API /dashboard/chart-data)
+interface ChartDataState {
+  ndviAnomalyTimeline: Array<{ year: number; anomaly: number; baseline?: number }>
+  riskDistribution: Array<{ name: string; value: number; color: string }>
+  precipVsVegetation: Array<{ year: number; precipitation: number; ndvi: number }>
+}
 
-// Mock Risk Distribution Data
-const riskDistributionData = [
-  { name: 'Low Risk', value: 35, color: '#10B981' },
-  { name: 'Moderate Risk', value: 40, color: '#f59e0b' },
-  { name: 'High Risk', value: 25, color: '#ef4444' },
-]
+const defaultChartData: ChartDataState = {
+  ndviAnomalyTimeline: [],
+  riskDistribution: [
+    { name: 'Low Risk', value: 33, color: '#10B981' },
+    { name: 'Moderate Risk', value: 34, color: '#f59e0b' },
+    { name: 'High Risk', value: 33, color: '#ef4444' },
+  ],
+  precipVsVegetation: [],
+}
 
-// Mock Precipitation vs Vegetation Data
-const precipVegData = [
-  { year: 2015, precipitation: 380, ndvi: 0.72 },
-  { year: 2016, precipitation: 420, ndvi: 0.78 },
-  { year: 2017, precipitation: 310, ndvi: 0.65 },
-  { year: 2018, precipitation: 395, ndvi: 0.74 },
-  { year: 2019, precipitation: 285, ndvi: 0.58 },
-  { year: 2020, precipitation: 410, ndvi: 0.76 },
-  { year: 2021, precipitation: 180, ndvi: 0.42 }, // Drought
-  { year: 2022, precipitation: 290, ndvi: 0.55 },
-  { year: 2023, precipitation: 340, ndvi: 0.62 },
-]
-
-// Analysis Loading Steps
+// Analysis Loading Steps (textKey for t())
 const analysisSteps = [
-  { id: 1, text: 'Querying Sentinel-1 SAR data...', icon: Satellite },
-  { id: 2, text: 'Processing NDVI time series...', icon: Activity },
-  { id: 3, text: 'Calculating Ulanova Index...', icon: Target },
-  { id: 4, text: 'Running Quantile Regression...', icon: BarChart3 },
-  { id: 5, text: 'Generating risk assessment...', icon: AlertTriangle },
+  { id: 1, textKey: 'queryingSentinel', icon: Satellite },
+  { id: 2, textKey: 'processingNDVI', icon: Activity },
+  { id: 3, textKey: 'calculatingUlanova', icon: Target },
+  { id: 4, textKey: 'runningQuantile', icon: BarChart3 },
+  { id: 5, textKey: 'generatingRisk', icon: AlertTriangle },
 ]
 
 const DASHBOARD_API_URL = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
@@ -161,8 +148,30 @@ function mapRiskCategory(apiCategory: string): 'LOW' | 'MODERATE' | 'HIGH' {
   return 'MODERATE'
 }
 
-export function AnalyticsModule() {
-  const { t } = useLanguage()
+// Parse loan amount / hectares: "45K" -> 45000, "1.5M" -> 1500000, "150" -> 150
+function parseAmount(value: string, fallback: number): number {
+  const s = String(value || '').trim().toUpperCase().replace(/\s/g, '')
+  if (!s) return fallback
+  const k = s.replace(/[KК]$/, '')
+  const m = s.replace(/[MМ]$/, '')
+  if (s.endsWith('K') || s.endsWith('К')) {
+    const n = parseFloat(k)
+    return Number.isFinite(n) ? n * 1000 : fallback
+  }
+  if (s.endsWith('M') || s.endsWith('М')) {
+    const n = parseFloat(m)
+    return Number.isFinite(n) ? n * 1_000_000 : fallback
+  }
+  const n = parseFloat(s)
+  return Number.isFinite(n) ? n : fallback
+}
+
+interface AnalyticsModuleProps {
+  onFieldAdded?: () => void
+}
+
+export function AnalyticsModule({ onFieldAdded }: AnalyticsModuleProps) {
+  const { t, language } = useLanguage()
   const [phase, setPhase] = useState<AnalysisPhase>('input')
   const [currentStep, setCurrentStep] = useState(0)
   const [result, setResult] = useState<AnalysisResult | null>(null)
@@ -216,8 +225,8 @@ export function AnalyticsModule() {
 
     const year = new Date().getFullYear()
     const crop = (loanParams.crop || 'wheat').toLowerCase()
-    const hectares = parseFloat(loanParams.hectares) || 150
-    const loanAmount = parseFloat(loanParams.loanAmount) || 500000
+    const hectares = parseAmount(loanParams.hectares, 150)
+    const loanAmount = parseAmount(loanParams.loanAmount, 500000)
     const interestRate = parseFloat(loanParams.interestRate) || 12
     const termYears = parseFloat(loanParams.termYears) || 5
 
@@ -233,6 +242,7 @@ export function AnalyticsModule() {
       spread: number
       confidenceLabel: string
       riskCategory: string
+      aiTips?: string[]
     } | null = null
 
     try {
@@ -241,16 +251,24 @@ export function AnalyticsModule() {
       url.searchParams.set('year', String(year))
       url.searchParams.set('crop', crop)
       url.searchParams.set('scope', 'country')
-      const res = await fetch(url.toString())
+      url.searchParams.set('lang', language)
+      const requestUrl = url.toString()
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Analytics] Calling dashboard API:', requestUrl)
+      }
+      const res = await fetch(requestUrl)
       if (!res.ok) {
         throw new Error(`API ${res.status}: ${await res.text().catch(() => '')}`)
       }
       apiData = await res.json()
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Analytics] Backend response:', { p50: apiData.p50, riskCategory: apiData.riskCategory })
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Dashboard API unavailable'
       setAnalysisError(
         msg.includes('fetch') || msg.includes('Failed')
-          ? 'Prediction service unavailable. Start the backend: cd backend/services/dashboard && uvicorn app:app --port 8000'
+          ? t('predictionServiceUnavailable')
           : msg
       )
       setPhase('input')
@@ -298,6 +316,7 @@ export function AnalyticsModule() {
       assetName: `${loanParams.crop.charAt(0).toUpperCase() + loanParams.crop.slice(1)} Field`,
       region: 'Uzbekistan',
       district: locationName,
+      aiTips: Array.isArray(apiData.aiTips) ? apiData.aiTips : [],
     })
 
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -329,7 +348,7 @@ export function AnalyticsModule() {
       {phase === 'analyzing' && (
         <AnalyzingPhase
           currentStep={currentStep}
-          steps={analysisSteps}
+          steps={analysisSteps.map(s => ({ ...s, text: t(s.textKey) }))}
         />
       )}
 
@@ -338,6 +357,9 @@ export function AnalyticsModule() {
         <ResultsPhase
           result={result}
           onReset={resetAnalysis}
+          language={language}
+          loanParams={loanParams}
+          onAddField={onFieldAdded}
         />
       )}
     </div>
@@ -354,15 +376,16 @@ interface InputPhaseProps {
 }
 
 function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysisError }: InputPhaseProps) {
+  const { t } = useLanguage()
   const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold text-foreground">Credit Risk Analytics</h2>
+        <h2 className="text-3xl font-bold text-foreground">{t('creditRiskAnalytics')}</h2>
         <p className="text-muted-foreground">
-          Enter loan parameters and draw the agricultural area on the map
+          {t('enterLoanParamsDraw')}
         </p>
       </div>
 
@@ -373,25 +396,26 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="text-primary font-semibold text-sm">1</span>
             </div>
-            <h3 className="text-lg font-semibold text-foreground">Loan Parameters</h3>
+            <h3 className="text-lg font-semibold text-foreground">{t('loanParameters')}</h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Loan Amount (USD)
+                {t('loanAmount')}
               </label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={loanParams.loanAmount}
                 onChange={(e) => onInputChange('loanAmount', e.target.value)}
-                placeholder="500,000"
+                placeholder="e.g. 45000 or 45K"
                 className="bg-input/50 border-border"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Interest Rate (%)
+                {t('interestRate')}
               </label>
               <Input
                 type="number"
@@ -404,7 +428,7 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Term (Years)
+                {t('termYears')}
               </label>
               <Input
                 type="number"
@@ -426,7 +450,7 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                 <span className="text-primary font-semibold text-sm">2</span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">Draw Agricultural Area</h3>
+              <h3 className="text-lg font-semibold text-foreground">{t('drawAgriculturalArea')}</h3>
             </div>
             {loanParams.drawnArea && (
               <div className="flex items-center gap-2 text-sm">
@@ -450,24 +474,24 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border/50">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Crop Type
+                {t('cropType')}
               </label>
               <Select value={loanParams.crop} onValueChange={(v) => onInputChange('crop', v)}>
                 <SelectTrigger className="bg-input/50 border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border">
-                  <SelectItem value="cotton">Cotton</SelectItem>
-                  <SelectItem value="wheat">Wheat</SelectItem>
-                  <SelectItem value="rice">Rice</SelectItem>
-                  <SelectItem value="corn">Corn</SelectItem>
+                  <SelectItem value="cotton">{t('cropCotton')}</SelectItem>
+                  <SelectItem value="wheat">{t('cropWheat')}</SelectItem>
+                  <SelectItem value="rice">{t('cropRice')}</SelectItem>
+                  <SelectItem value="corn">{t('cropCorn')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Area (Hectares)
+                {t('areaHectares')}
                 {loanParams.drawnArea && (
                   <span className="text-xs text-muted-foreground ml-2">
                     (auto-calculated from drawing)
@@ -489,7 +513,7 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
       {/* API error message */}
       {analysisError && (
         <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
-          <strong>Analysis unavailable</strong>
+          <strong>{t('analysisUnavailable')}</strong>
           <p className="mt-1">{analysisError}</p>
         </div>
       )}
@@ -501,7 +525,7 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
         className="w-full py-6 text-lg font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all"
       >
         <Satellite className="w-5 h-5 mr-2" />
-        Run Analysis
+        {t('runAnalysis')}
         <ArrowRight className="w-5 h-5 ml-2" />
       </Button>
     </div>
@@ -511,19 +535,20 @@ function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysi
 // Phase 2: Analyzing Component
 interface AnalyzingPhaseProps {
   currentStep: number
-  steps: typeof analysisSteps
+  steps: Array<{ id: number; text: string; icon: React.ComponentType<{ className?: string }> }>
 }
 
 function AnalyzingPhase({ currentStep, steps }: AnalyzingPhaseProps) {
+  const { t } = useLanguage()
   return (
     <div className="max-w-2xl mx-auto space-y-8 py-12">
       <div className="text-center space-y-4">
         <div className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
           <Loader2 className="w-10 h-10 text-primary animate-spin" />
         </div>
-        <h2 className="text-2xl font-bold text-foreground">Analyzing Agricultural Risk</h2>
+        <h2 className="text-2xl font-bold text-foreground">{t('analyzingRisk')}</h2>
         <p className="text-muted-foreground">
-          Processing satellite imagery and historical data...
+          {t('processingSatellite')}
         </p>
       </div>
 
@@ -589,9 +614,29 @@ function AnalyzingPhase({ currentStep, steps }: AnalyzingPhaseProps) {
 interface ResultsPhaseProps {
   result: AnalysisResult
   onReset: () => void
+  language: string
+  loanParams?: LoanParams
+  onAddField?: () => void
 }
 
-function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
+function ResultsPhase({ result, onReset, language, loanParams, onAddField }: ResultsPhaseProps) {
+  const { t } = useLanguage()
+  const [chartData, setChartData] = useState<ChartDataState>(defaultChartData)
+  const [fieldAdded, setFieldAdded] = useState(false)
+
+  // Fetch chart data from API (dataset-based) when result is available
+  useEffect(() => {
+    const crop = (result.assetName?.split(' ')[0] || 'cotton').toLowerCase()
+    const url = new URL('/dashboard/chart-data', DASHBOARD_API_URL)
+    url.searchParams.set('country', 'UZB')
+    url.searchParams.set('crop', crop)
+    url.searchParams.set('scope', 'country')
+    fetch(url.toString())
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Chart data failed'))))
+      .then((data: ChartDataState) => setChartData(data))
+      .catch(() => setChartData(defaultChartData))
+  }, [result.assetName])
+
   // Prepare data for AI Recommendation
   const aiRegionData: Partial<RegionData> = {
     region_name: result.district,
@@ -616,8 +661,8 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
     loanAmount: result.annualDebtService * 5,
   }
 
-  // AI Recommendation state
-  const aiRecommendation = useAIRecommendation(aiRegionData)
+  // AI Recommendation state (pass language so Gemini responds in selected language)
+  const aiRecommendation = useAIRecommendation(aiRegionData, language)
 
   return (
     <div className="space-y-6">
@@ -636,15 +681,15 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
                 : result.riskCategory === 'MODERATE'
                 ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
                 : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
-            }`}>
+            }`} title="Crop/field risk from model">
               {result.riskCategory === 'LOW' && <CheckCircle className="w-4 h-4 mr-1.5" />}
               {result.riskCategory === 'MODERATE' && <AlertTriangle className="w-4 h-4 mr-1.5" />}
               {result.riskCategory === 'HIGH' && <AlertTriangle className="w-4 h-4 mr-1.5" />}
-              {result.riskCategory} RISK
+              {t('fieldRisk')}: {result.riskCategory === 'LOW' ? t('lowRisk') : result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
             </Badge>
             
             <Button variant="outline" onClick={onReset} className="h-10 px-5">
-              New Analysis
+              {t('newAnalysis')}
             </Button>
           </div>
         </div>
@@ -682,11 +727,11 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
               </p>
             </div>
             <div className="text-center px-4 border-r border-border/50">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Annual Debt Service</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
               <p className="text-xl font-semibold text-foreground">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
             <div className="text-center px-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Expected Revenue</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
               <p className="text-xl font-semibold text-foreground">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
@@ -697,8 +742,9 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
               ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300'
               : 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300'
           }`}>
-            <span className="font-medium">
-              {result.dscr >= 1.25 ? 'Creditworthy' : result.dscr >= 1.0 ? 'Marginal' : 'High Default Risk'}
+            <span className="text-xs font-medium uppercase tracking-wide opacity-90">{t('creditRiskLabel')}</span>
+            <span className="block font-medium">
+              {result.dscr >= 1.25 ? t('creditworthy') : result.dscr >= 1.0 ? t('marginal') : t('highDefaultRisk')}
             </span>
           </div>
         </div>
@@ -708,24 +754,24 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
       <div className="grid grid-cols-3 gap-4">
         {/* Row 1 */}
         <MetricCard
-          title="Predicted Yield"
+          title={t('predictedYield')}
           value={`${result.predictedYield.toFixed(1)} t/ha`}
           subtitle={`Yield anomaly p50: ${result.p50 > 0 ? '+' : ''}${result.p50.toFixed(1)}%`}
           icon={<Target className="w-5 h-5" />}
           color="primary"
         />
         <MetricCard
-          title="Yield Anomaly"
+          title={t('yieldAnomaly')}
           value={`${result.yieldAnomaly > 0 ? '+' : ''}${result.yieldAnomaly.toFixed(1)}%`}
-          subtitle="vs 5-year average"
+          subtitle={t('vs5YearAverage')}
           icon={result.yieldAnomaly < -10 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
           color={result.yieldAnomaly < -10 ? 'red' : result.yieldAnomaly < 0 ? 'orange' : 'green'}
           highlight={result.yieldAnomaly < -10}
         />
         <MetricCard
-          title="Risk Category"
-          value={result.riskCategory}
-          subtitle="Satellite-derived"
+          title={t('fieldRisk')}
+          value={result.riskCategory === 'LOW' ? t('lowRisk') : result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
+          subtitle={t('satelliteDerived')}
           icon={<AlertTriangle className="w-5 h-5" />}
           color={result.riskCategory === 'HIGH' ? 'red' : result.riskCategory === 'MODERATE' ? 'orange' : 'green'}
           highlight={result.riskCategory === 'HIGH'}
@@ -733,24 +779,24 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
 
         {/* Row 2 */}
         <MetricCard
-          title="Trend Dynamics"
-          value={result.trendDynamics}
+          title={t('trendDynamicsLabel')}
+          value={result.trendDynamics === 'Declining' ? t('declining') : result.trendDynamics === 'Improving' ? t('improving') : t('stable')}
           subtitle={`NDVI slope: ${result.ndviSlope > 0 ? '+' : ''}${result.ndviSlope.toFixed(3)}`}
           icon={result.trendDynamics === 'Declining' ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
           color={result.trendDynamics === 'Declining' ? 'orange' : 'green'}
         />
         <MetricCard
-          title="Climate Stress"
+          title={t('climateStress')}
           value={`HTC ${result.htcIndex.toFixed(2)}`}
-          subtitle={result.htcIndex < 0.7 ? 'Drought Signal' : 'Normal'}
+          subtitle={result.htcIndex < 0.7 ? t('droughtSignal') : t('normalLabel')}
           icon={<Thermometer className="w-5 h-5" />}
           color={result.htcIndex < 0.7 ? 'red' : 'green'}
           highlight={result.htcIndex < 0.7}
         />
         <MetricCard
-          title="Confidence"
+          title={t('confidence')}
           value={`±${result.confidenceSpread.toFixed(1)}`}
-          subtitle={`Anomaly range: ${result.p10.toFixed(1)}% - ${result.p90.toFixed(1)}%`}
+          subtitle={`${t('anomalyRange')}: ${result.p10.toFixed(1)}% - ${result.p90.toFixed(1)}%`}
           icon={<Activity className="w-5 h-5" />}
           color="primary"
         />
@@ -762,12 +808,12 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
         <Card className="p-4 lg:col-span-1">
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold text-foreground">NDVI Anomaly Timeline</h3>
-              <p className="text-xs text-muted-foreground">Detection of drought events (2015-2023)</p>
+              <h3 className="font-semibold text-foreground">{t('ndviAnomalyTimeline')}</h3>
+              <p className="text-xs text-muted-foreground">{t('detectionOfDroughtEvents')}</p>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={ndviAnomalyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <ComposedChart data={chartData.ndviAnomalyTimeline.length ? chartData.ndviAnomalyTimeline : [{ year: new Date().getFullYear(), anomaly: 0, baseline: 0 }]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                   <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" domain={[-25, 10]} />
@@ -792,7 +838,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              Red zone indicates anomaly &lt; -10%. 2021 drought correctly detected.
+              {t('redZoneIndicates')}
             </p>
           </div>
         </Card>
@@ -801,14 +847,14 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
         <Card className="p-4 lg:col-span-1">
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold text-foreground">Risk Distribution</h3>
-              <p className="text-xs text-muted-foreground">District-level context</p>
+              <h3 className="font-semibold text-foreground">{t('riskDistribution')}</h3>
+              <p className="text-xs text-muted-foreground">{t('districtLevelContext')}</p>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={riskDistributionData}
+                    data={chartData.riskDistribution}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -816,7 +862,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
                     paddingAngle={2}
                     dataKey="value"
                   >
-                    {riskDistributionData.map((entry, index) => (
+                    {chartData.riskDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -837,7 +883,7 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              40% of district fields show moderate risk. Regional pattern, not isolated.
+              {t('regionalPattern')}
             </p>
           </div>
         </Card>
@@ -846,12 +892,12 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
         <Card className="p-4 lg:col-span-1">
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold text-foreground">Precip vs Vegetation</h3>
-              <p className="text-xs text-muted-foreground">Multi-modal validation</p>
+              <h3 className="font-semibold text-foreground">{t('precipVsVegetation')}</h3>
+              <p className="text-xs text-muted-foreground">{t('multiModalValidation')}</p>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={precipVegData} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                <ComposedChart data={chartData.precipVsVegetation.length ? chartData.precipVsVegetation : [{ year: new Date().getFullYear(), precipitation: 0, ndvi: 0 }]} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                   <YAxis 
@@ -896,11 +942,62 @@ function ResultsPhase({ result, onReset }: ResultsPhaseProps) {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              Rain-vegetation correlation validates physics-based model.
+              {t('rainVegetationCorrelation')}
             </p>
           </div>
         </Card>
       </div>
+
+      {/* Add field to tracking — green button at bottom */}
+      {onAddField && !fieldAdded && (
+        <div className="pt-4">
+          <Button
+            onClick={() => {
+              const crop = result.assetName?.split(' ')[0] || 'Cotton'
+              const bounds = loanParams?.drawnArea?.bounds
+              const coordinates = bounds
+                ? `${((bounds.north + bounds.south) / 2).toFixed(4)}, ${((bounds.east + bounds.west) / 2).toFixed(4)}`
+                : result.district
+              addField({
+                assetName: result.assetName,
+                region: result.region,
+                district: result.district,
+                crop,
+                coordinates,
+                hectares: loanParams?.hectares,
+                loanAmount: loanParams?.loanAmount,
+                interestRate: loanParams?.interestRate,
+                termYears: loanParams?.termYears,
+                result: {
+                  predictedYield: result.predictedYield,
+                  yieldAnomaly: result.yieldAnomaly,
+                  riskCategory: result.riskCategory,
+                  trendDynamics: result.trendDynamics,
+                  ndviSlope: result.ndviSlope,
+                  htcIndex: result.htcIndex,
+                  confidenceSpread: result.confidenceSpread,
+                  p10: result.p10,
+                  p50: result.p50,
+                  p90: result.p90,
+                  dscr: result.dscr,
+                  annualDebtService: result.annualDebtService,
+                  expectedRevenue: result.expectedRevenue,
+                  aiTips: result.aiTips,
+                },
+              })
+              setFieldAdded(true)
+              onAddField()
+            }}
+            className="w-full py-6 text-lg font-semibold bg-[#10B981] text-white hover:bg-[#059669] shadow-lg hover:shadow-xl transition-all"
+          >
+            <MapPin className="w-5 h-5 mr-2" />
+            {t('addFieldToTracking')}
+          </Button>
+        </div>
+      )}
+      {fieldAdded && (
+        <p className="text-sm text-[#10B981] font-medium pt-2">{t('fieldAddedToTracking')}</p>
+      )}
     </div>
   )
 }

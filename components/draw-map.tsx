@@ -45,6 +45,15 @@ const regionFileMap: Record<string, string> = {
 }
 
 // Types
+export interface DetectedLocation {
+  region: string | null
+  district: string | null
+  center: {
+    lat: number
+    lng: number
+  }
+}
+
 export interface DrawnArea {
   type: 'rectangle' | 'polygon'
   coordinates: [number, number][]
@@ -55,12 +64,50 @@ export interface DrawnArea {
     west: number
   }
   area?: number // in hectares
+  location?: DetectedLocation // Auto-detected location
 }
 
 interface DrawMapProps {
   onAreaDrawn: (area: DrawnArea | null) => void
   initialCenter?: [number, number]
   initialZoom?: number
+}
+
+// Point-in-polygon algorithm (ray casting)
+function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  const [x, y] = point
+  let inside = false
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i]
+    const [xj, yj] = polygon[j]
+    
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside
+    }
+  }
+  
+  return inside
+}
+
+// Extract coordinates from GeoJSON geometry
+function getPolygonCoordinates(geometry: any): [number, number][][] {
+  if (!geometry) return []
+  
+  if (geometry.type === 'Polygon') {
+    // GeoJSON uses [lng, lat], we need [lat, lng]
+    return geometry.coordinates.map((ring: number[][]) => 
+      ring.map(([lng, lat]: number[]) => [lat, lng] as [number, number])
+    )
+  } else if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.flatMap((poly: number[][][]) =>
+      poly.map((ring: number[][]) => 
+        ring.map(([lng, lat]: number[]) => [lat, lng] as [number, number])
+      )
+    )
+  }
+  
+  return []
 }
 
 // Uzbekistan center coordinates
@@ -115,6 +162,7 @@ export function DrawMap({
   const regionsLayerRef = useRef<L.GeoJSON | null>(null)
   const districtsLayerRef = useRef<L.GeoJSON | null>(null)
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null)
+  const [detectedLocation, setDetectedLocation] = useState<DetectedLocation | null>(null)
 
   // Load Leaflet dynamically (client-side only)
   useEffect(() => {
@@ -227,6 +275,7 @@ export function DrawMap({
 
     map.on('draw:deleted' as any, () => {
       setDrawnArea(null)
+      setDetectedLocation(null)
       onAreaDrawn(null)
     })
 
@@ -238,6 +287,24 @@ export function DrawMap({
       mapRef.current = null
     }
   }, [leaflet, initialCenter, initialZoom, onAreaDrawn])
+
+  // Update location when drawnArea changes and GeoJSON is available
+  useEffect(() => {
+    if (!drawnArea || !drawnArea.bounds) {
+      setDetectedLocation(null)
+      return
+    }
+
+    const centerLat = (drawnArea.bounds.north + drawnArea.bounds.south) / 2
+    const centerLng = (drawnArea.bounds.east + drawnArea.bounds.west) / 2
+    const location = findLocation(centerLat, centerLng)
+    
+    setDetectedLocation(location)
+    
+    // Update the drawnArea with location and notify parent
+    const updatedArea = { ...drawnArea, location }
+    onAreaDrawn(updatedArea)
+  }, [drawnArea?.bounds, regionsGeoJSON, allDistrictsGeoJSON, findLocation])
 
   // Add/remove boundary layers when showBoundaries changes or GeoJSON loads
   useEffect(() => {
@@ -358,8 +425,61 @@ export function DrawMap({
     }
   }, [leaflet, isLoaded, showBoundaries, regionsGeoJSON, allDistrictsGeoJSON])
 
+  // Find location (region and district) for a given point
+  const findLocation = useCallback((centerLat: number, centerLng: number): DetectedLocation => {
+    const point: [number, number] = [centerLat, centerLng]
+    let detectedRegion: string | null = null
+    let detectedDistrict: string | null = null
+
+    // Helper to normalize geometry
+    const normalizeGeometry = (feature: any) => {
+      if (feature.geometry && feature.geometry.geometries) {
+        return { ...feature, geometry: feature.geometry.geometries[0] }
+      }
+      return feature
+    }
+
+    // Find region
+    if (regionsGeoJSON) {
+      for (const feature of regionsGeoJSON.features) {
+        const normalized = normalizeGeometry(feature)
+        const polygons = getPolygonCoordinates(normalized.geometry)
+        
+        for (const polygon of polygons) {
+          if (pointInPolygon(point, polygon)) {
+            detectedRegion = feature.properties?.name || feature.properties?.ADM1_EN || null
+            break
+          }
+        }
+        if (detectedRegion) break
+      }
+    }
+
+    // Find district
+    if (allDistrictsGeoJSON) {
+      for (const feature of allDistrictsGeoJSON.features) {
+        const normalized = normalizeGeometry(feature)
+        const polygons = getPolygonCoordinates(normalized.geometry)
+        
+        for (const polygon of polygons) {
+          if (pointInPolygon(point, polygon)) {
+            detectedDistrict = feature.properties?.name || feature.properties?.ADM2_EN || null
+            break
+          }
+        }
+        if (detectedDistrict) break
+      }
+    }
+
+    return {
+      region: detectedRegion,
+      district: detectedDistrict,
+      center: { lat: centerLat, lng: centerLng }
+    }
+  }, [regionsGeoJSON, allDistrictsGeoJSON])
+
   // Extract area data from drawn layer
-  const extractAreaData = (layer: any, layerType: string): DrawnArea => {
+  const extractAreaData = useCallback((layer: any, layerType: string): DrawnArea => {
     let coordinates: [number, number][] = []
     let bounds = undefined
     
@@ -395,13 +515,19 @@ export function DrawMap({
     // Calculate area in hectares
     const areaHa = calculateAreaHectares(coordinates)
 
+    // Detect location based on center point
+    const centerLat = bounds ? (bounds.north + bounds.south) / 2 : 0
+    const centerLng = bounds ? (bounds.east + bounds.west) / 2 : 0
+    const location = findLocation(centerLat, centerLng)
+
     return {
       type: layerType as 'rectangle' | 'polygon',
       coordinates,
       bounds,
       area: Math.round(areaHa * 100) / 100,
+      location,
     }
-  }
+  }, [findLocation])
 
   // Tool handlers
   const startDrawRectangle = useCallback(() => {
@@ -474,6 +600,7 @@ export function DrawMap({
     if (!drawnItemsRef.current) return
     drawnItemsRef.current.clearLayers()
     setDrawnArea(null)
+    setDetectedLocation(null)
     onAreaDrawn(null)
     setActiveTool(null)
   }, [onAreaDrawn])
@@ -651,6 +778,35 @@ export function DrawMap({
           </div>
         )}
       </div>
+
+      {/* Detected Location Banner */}
+      {detectedLocation && (detectedLocation.region || detectedLocation.district) && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-b border-green-200 dark:border-green-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900">
+                <MapPin className="w-4 h-4 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">
+                  Detected Location
+                </p>
+                <p className="text-sm font-semibold text-green-900 dark:text-green-100">
+                  {detectedLocation.district && <span>{detectedLocation.district}</span>}
+                  {detectedLocation.district && detectedLocation.region && <span className="text-green-500"> • </span>}
+                  {detectedLocation.region && <span className="text-green-700 dark:text-green-300">{detectedLocation.region}</span>}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-green-600 dark:text-green-400">Coordinates</p>
+              <p className="text-xs font-mono text-green-800 dark:text-green-200">
+                {detectedLocation.center.lat.toFixed(4)}°N, {detectedLocation.center.lng.toFixed(4)}°E
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Map Container */}
       <div 

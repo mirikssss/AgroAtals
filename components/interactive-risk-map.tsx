@@ -1,7 +1,13 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -20,10 +26,8 @@ import { useLanguage } from '@/lib/language-context'
 import {
   centralAsianCountries,
   availableYears,
-  mockDistrictData,
-  nationalAverageData,
-  type DistrictRiskData,
 } from '@/data/regions-data'
+import type { KpiCardId } from '@/lib/gemini'
 
 import dynamic from 'next/dynamic'
 
@@ -83,11 +87,18 @@ interface KPICardProps {
   value: string | number
   icon: React.ReactNode
   subtitle?: string
+  onClick?: () => void
 }
 
-function KPICard({ title, value, icon, subtitle }: KPICardProps) {
+function KPICard({ title, value, icon, subtitle, onClick }: KPICardProps) {
   return (
-    <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)]">
+    <Card
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
+      className={`p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)] ${onClick ? 'cursor-pointer' : ''}`}
+    >
       <div className="flex items-start justify-between mb-2">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           {title}
@@ -110,6 +121,17 @@ interface InteractiveRiskMapProps {
   className?: string
 }
 
+interface DashboardMetrics {
+  riskScore: number
+  valueAtRisk: string
+  yieldAnomaly: string
+  p10: number
+  p50: number
+  p90: number
+  spread: number
+  confidenceLabel: string
+}
+
 export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const { t } = useLanguage()
   
@@ -126,8 +148,16 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   // Selection states
   const [hoveredArea, setHoveredArea] = useState<string | null>(null)
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null)
-  const [selectedDistrictData, setSelectedDistrictData] = useState<DistrictRiskData>(nationalAverageData)
+  const [selectedDistrictData, setSelectedDistrictData] = useState<DashboardMetrics | null>(null)
   const [displayName, setDisplayName] = useState<string>('National Average')
+  const [isKpiLoading, setIsKpiLoading] = useState(false)
+  const [kpiError, setKpiError] = useState<string | null>(null)
+  
+  // AI explain modal
+  const [explainOpen, setExplainOpen] = useState(false)
+  const [explainCardId, setExplainCardId] = useState<KpiCardId | null>(null)
+  const [explainText, setExplainText] = useState<string>('')
+  const [explainLoading, setExplainLoading] = useState(false)
   
   // Track if we should fit bounds (only on initial load or region change)
   const [shouldFitBounds, setShouldFitBounds] = useState(true)
@@ -202,7 +232,6 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const handleRegionClick = useCallback((regionName: string) => {
     setSelectedRegion(regionName)
     setSelectedDistrict(null)
-    setSelectedDistrictData(nationalAverageData)
     setDisplayName(regionName)
   }, [])
   
@@ -215,14 +244,6 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const handleDistrictClick = useCallback((districtName: string) => {
     setSelectedDistrict(districtName)
     setShouldFitBounds(false) // Don't reset zoom on click
-    
-    const data = mockDistrictData[districtName] || {
-      riskScore: Math.random() * 0.6 + 0.2,
-      valueAtRisk: `$${(Math.random() * 2 + 0.5).toFixed(1)}M`,
-      yieldAnomaly: `${(Math.random() * 20 - 10).toFixed(1)}%`,
-      aiInsight: `Analysis for ${districtName}. Satellite monitoring active.`
-    }
-    setSelectedDistrictData(data)
     setDisplayName(districtName)
   }, [])
   
@@ -231,7 +252,6 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
     setSelectedRegion('all')
     setDistrictsGeoJSON(null)
     setSelectedDistrict(null)
-    setSelectedDistrictData(nationalAverageData)
     setDisplayName('National Average')
     setShouldFitBounds(true)
   }, [])
@@ -246,11 +266,81 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
     setSelectedRegion('all')
     setDistrictsGeoJSON(null)
     setSelectedDistrict(null)
-    setSelectedDistrictData(nationalAverageData)
     setDisplayName('National Average')
     setHoveredArea(null)
     setShouldFitBounds(true)
   }, [selectedCountry])
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
+
+  const fetchDashboardMetrics = useCallback(async () => {
+    const scope = selectedDistrict
+      ? 'district'
+      : selectedRegion !== 'all'
+        ? 'region'
+        : 'country'
+    const areaName = selectedDistrict || (selectedRegion !== 'all' ? selectedRegion : '')
+    const yearValue = selectedYear === 'current' ? new Date().getFullYear() : Number(selectedYear)
+
+    setIsKpiLoading(true)
+    setKpiError(null)
+    try {
+      const url = new URL('/dashboard/metrics', apiBaseUrl)
+      url.searchParams.set('country', selectedCountry)
+      url.searchParams.set('year', String(yearValue))
+      url.searchParams.set('scope', scope)
+      if (areaName) {
+        url.searchParams.set('area_name', areaName)
+      }
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setSelectedDistrictData(data)
+    } catch (err: any) {
+      setKpiError('Failed to load KPI data')
+    } finally {
+      setIsKpiLoading(false)
+    }
+  }, [apiBaseUrl, selectedCountry, selectedRegion, selectedDistrict, selectedYear])
+
+  useEffect(() => {
+    fetchDashboardMetrics()
+  }, [fetchDashboardMetrics])
+
+  const handleKpiCardClick = useCallback(async (cardId: KpiCardId) => {
+    setExplainCardId(cardId)
+    setExplainOpen(true)
+    setExplainText('')
+    setExplainLoading(true)
+    try {
+      const metrics = selectedDistrictData
+        ? {
+            location: displayName,
+            valueAtRisk: selectedDistrictData.valueAtRisk,
+            riskScore: selectedDistrictData.riskScore,
+            yieldAnomaly: selectedDistrictData.yieldAnomaly,
+            p10: selectedDistrictData.p10,
+            p50: selectedDistrictData.p50,
+            p90: selectedDistrictData.p90,
+            spread: selectedDistrictData.spread,
+            confidenceLabel: selectedDistrictData.confidenceLabel,
+          }
+        : { location: displayName }
+      const res = await fetch('/api/explain-kpi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId, ...metrics }),
+      })
+      const data = await res.json()
+      setExplainText(data.explanation || 'Не удалось загрузить объяснение.')
+    } catch {
+      setExplainText('Ошибка загрузки объяснения. Попробуйте позже.')
+    } finally {
+      setExplainLoading(false)
+    }
+  }, [displayName, selectedDistrictData])
 
   // Current GeoJSON to display
   const currentGeoJSON = selectedRegion !== 'all' && districtsGeoJSON ? districtsGeoJSON : regionsGeoJSON
@@ -273,8 +363,8 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             </button>
           )}
           
-          {/* Map Container */}
-          <Card className="flex-1 h-[500px] overflow-hidden border-border relative">
+          {/* Map Container - z-0 so dropdowns (z-100) and header stay above */}
+          <Card className="flex-1 h-[500px] overflow-hidden border-border relative z-0">
             {isLoadingDistricts && (
               <div className="absolute inset-0 bg-background/80 z-10 flex items-center justify-center">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -309,17 +399,17 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             )}
           </Card>
 
-          {/* Filters Row - Below the map */}
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            <div className="space-y-1">
+          {/* Filters Row - Below the map, dropdowns open downward with high z-index */}
+          <div className="grid grid-cols-3 gap-1 mt-3">
+            <div className="space-y-0.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Country
               </label>
               <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                <SelectTrigger className="bg-card border-border h-9">
+                <SelectTrigger className="bg-card border-border h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
+                <SelectContent className="bg-card border-border z-[100]" side="bottom" sideOffset={4} position="popper">
                   {centralAsianCountries.map((country) => (
                     <SelectItem key={country.code} value={country.code}>
                       {country.name}
@@ -329,7 +419,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </Select>
             </div>
             
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Region
               </label>
@@ -342,10 +432,10 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                   setDisplayName(value)
                 }
               }}>
-                <SelectTrigger className="bg-card border-border h-9">
+                <SelectTrigger className="bg-card border-border h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
+                <SelectContent className="bg-card border-border z-[100]" side="bottom" sideOffset={4} position="popper">
                   <SelectItem value="all">All Regions</SelectItem>
                   {regionsList.map((region) => (
                     <SelectItem key={region.name} value={region.name}>
@@ -356,15 +446,15 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </Select>
             </div>
             
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Year
               </label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger className="bg-card border-border h-9">
+                <SelectTrigger className="bg-card border-border h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
+                <SelectContent className="bg-card border-border z-[100]" side="bottom" sideOffset={4} position="popper">
                   {availableYears.map((year) => (
                     <SelectItem key={year.value} value={year.value}>
                       {year.label}
@@ -396,32 +486,54 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           {/* KPI Card 1: Portfolio Value at Risk */}
           <KPICard
             title="Portfolio Value at Risk"
-            value={selectedDistrictData.valueAtRisk}
+            value={selectedDistrictData ? selectedDistrictData.valueAtRisk : '—'}
             icon={<DollarSign className="w-4 h-4" />}
-            subtitle={`Risk Score: ${(selectedDistrictData.riskScore * 100).toFixed(0)}%`}
+            subtitle={
+              selectedDistrictData
+                ? `Risk Score: ${(selectedDistrictData.riskScore * 100).toFixed(0)}%`
+                : isKpiLoading ? 'Loading...' : kpiError || 'No data'
+            }
+            onClick={() => handleKpiCardClick('portfolio')}
           />
           
           {/* KPI Card 2: Yield Anomaly */}
           <KPICard
             title="Yield Anomaly Forecast"
-            value={selectedDistrictData.yieldAnomaly}
+            value={selectedDistrictData ? selectedDistrictData.yieldAnomaly : '—'}
             icon={<Wheat className="w-4 h-4" />}
-            subtitle="Compared to 5-year average"
+            subtitle={selectedDistrictData ? 'Compared to 5-year average' : isKpiLoading ? 'Loading...' : kpiError || 'No data'}
+            onClick={() => handleKpiCardClick('yield')}
           />
           
-          {/* KPI Card 3: AI Insights */}
-          <Card className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)] flex-1 flex flex-col">
+          {/* KPI Card 3: Basis Risk / Model Confidence Metrics */}
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => handleKpiCardClick('confidence')}
+            onKeyDown={(e) => e.key === 'Enter' && handleKpiCardClick('confidence')}
+            className="p-4 bg-card border-border rounded-2xl shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_48px_-14px_rgba(0,0,0,0.35)] flex-1 flex flex-col cursor-pointer"
+          >
             <div className="flex items-start justify-between mb-2">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                AI Recommendation
+                Basis Risk / Model Confidence
               </h3>
               <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
                 <Brain className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-sm text-foreground leading-relaxed flex-1">
-              {selectedDistrictData.aiInsight}
-            </p>
+            {selectedDistrictData ? (
+              <div className="text-sm text-foreground leading-relaxed flex-1 space-y-1">
+                <div>P10: {selectedDistrictData.p10.toFixed(2)}%</div>
+                <div>P50: {selectedDistrictData.p50.toFixed(2)}%</div>
+                <div>P90: {selectedDistrictData.p90.toFixed(2)}%</div>
+                <div>Spread: {selectedDistrictData.spread.toFixed(2)}%</div>
+                <div className="text-muted-foreground">{selectedDistrictData.confidenceLabel}</div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed flex-1">
+                {isKpiLoading ? 'Loading...' : kpiError || 'No data'}
+              </p>
+            )}
           </Card>
           
           {/* Year indicator */}
@@ -434,6 +546,28 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           </div>
         </div>
       </div>
+
+      {/* AI explain modal for KPI cards */}
+      <Dialog open={explainOpen} onOpenChange={setExplainOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {explainCardId === 'portfolio' && 'Portfolio Value at Risk'}
+              {explainCardId === 'yield' && 'Yield Anomaly Forecast'}
+              {explainCardId === 'confidence' && 'Basis Risk / Model Confidence'}
+            </DialogTitle>
+          </DialogHeader>
+          {explainLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+              {explainText}
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

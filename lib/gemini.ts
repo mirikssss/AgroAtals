@@ -269,6 +269,99 @@ function assignSection(sections: GeminiResponse, headerName: string, content: st
   }
 }
 
+/** KPI card IDs for dashboard explain modal */
+export type KpiCardId = 'portfolio' | 'yield' | 'confidence';
+
+export interface KpiExplainMetrics {
+  location?: string
+  valueAtRisk?: string
+  riskScore?: number
+  yieldAnomaly?: string
+  p10?: number
+  p50?: number
+  p90?: number
+  spread?: number
+  confidenceLabel?: string
+}
+
+const KPI_CARD_DESCRIPTIONS: Record<KpiCardId, string> = {
+  portfolio: 'Portfolio Value at Risk',
+  yield: 'Yield Anomaly Forecast',
+  confidence: 'Basis Risk / Model Confidence',
+};
+
+/** Call Gemini 2.5 Flash for short banker-facing explanation of a KPI card and its ML data */
+export async function getKpiExplanation(cardId: KpiCardId, metrics: KpiExplainMetrics): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!apiKey) {
+    return getMockKpiExplanation(cardId, metrics);
+  }
+
+  const cardTitle = KPI_CARD_DESCRIPTIONS[cardId];
+  const prompt = `You are an expert explaining agricultural risk metrics to bank credit officers (AgroAtlas product). Audience: bankers.
+
+CARD: "${cardTitle}"
+LOCATION: ${metrics.location ?? 'National average'}
+CURRENT DATA:
+${cardId === 'portfolio' ? `- Value at Risk: ${metrics.valueAtRisk ?? '—'}\n- Risk Score: ${metrics.riskScore != null ? (metrics.riskScore * 100).toFixed(0) + '%' : '—'}` : ''}
+${cardId === 'yield' ? `- Yield Anomaly: ${metrics.yieldAnomaly ?? '—'} (vs 5-year average)` : ''}
+${cardId === 'confidence' ? `- P10: ${metrics.p10?.toFixed(2) ?? '—'}%, P50: ${metrics.p50?.toFixed(2) ?? '—'}%, P90: ${metrics.p90?.toFixed(2) ?? '—'}%\n- Spread: ${metrics.spread?.toFixed(2) ?? '—'}%\n- ${metrics.confidenceLabel ?? ''}` : ''}
+
+TASK: In 3–5 short sentences (max 200 words), in Russian:
+1) What this card means for a banker (why it matters for credit decisions).
+2) Brief explain of how the number is obtained from the ML model / data.
+
+Tone: professional, concise. No bullet lists. Plain paragraphs.`;
+
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 400,
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  });
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `${getGeminiUrl(model)}?key=${apiKey}`;
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      if (!res.ok) {
+        if (res.status === 404) continue;
+        const err = await res.text();
+        throw new Error(`Gemini ${res.status}: ${err}`);
+      }
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return text.trim();
+    } catch (e) {
+      if (String(e).includes('404')) continue;
+      console.error('Gemini KPI explain error:', e);
+      break;
+    }
+  }
+  return getMockKpiExplanation(cardId, metrics);
+}
+
+export function getMockKpiExplanation(cardId: KpiCardId, metrics: KpiExplainMetrics): string {
+  const loc = metrics.location ?? 'по стране';
+  switch (cardId) {
+    case 'portfolio':
+      return `Карточка «Стоимость портфеля в зоне риска» показывает оценку потенциальных потерь по кредитному портфелю в выбранном регионе. Значение считается на основе модели квантильной регрессии (LightGBM): по прогнозу yield anomaly и калибровке риска (p10, σ_down) оценивается доля портфеля, которая может уйти в минус. Для банкира это индикатор, сколько экспозиции стоит хеджировать или пересмотреть.`;
+    case 'yield':
+      return `«Прогноз аномалии урожая» — это медианный прогноз отклонения урожайности от 5-летней средней (p50 модели). Модель обучена на спутниковых и климатических признаках (NDVI, осадки, температура и др.) и даёт процентное отклонение. Отрицательное значение сигнализирует о риске недобора урожая и возможных просрочках по кредитам.`;
+    case 'confidence':
+      return `«Базисный риск / уверенность модели» показывает разброс прогноза: p10 (пессимистичный сценарий), p50 (медиана), p90 (оптимистичный) и спред (p90 − p10). Чем больше спред, тем выше неопределённость — для банка это повод либо ужесточить условия, либо запросить дополнительное обеспечение.`;
+    default:
+      return 'Краткое объяснение по этой карточке для банкиров и источник данных из ML.';
+  }
+}
+
 // Mock response for development/demo without API key
 export function getMockRecommendation(regionData: RegionData): GeminiResponse {
   const isHighRisk = regionData.risk_category === 'High' || regionData.NDVI_anomaly < -0.1;

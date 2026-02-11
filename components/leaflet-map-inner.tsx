@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useEffect, useRef, useCallback, useState } from 'react'
 import { MapContainer, GeoJSON, TileLayer, useMap } from 'react-leaflet'
+import { HelpCircle, X } from 'lucide-react'
 import L from 'leaflet'
 import type { Layer, PathOptions, LeafletMouseEvent } from 'leaflet'
 
@@ -42,15 +43,16 @@ interface LeafletMapInnerProps {
   yieldAnomalyLoading?: boolean
 }
 
-// Color by Yield Anomaly (%): < -15% red, -15..-5% orange, -5..+5% neutral, > +5% green
-// Ensure anomaly is numeric (backend may return fraction or string)
+// Color by Yield Anomaly (%): red < -15%, orange -15..-5%, gray -5..+5%, light green +5..+15%, dark green > +15%
+// Ensures variation (not “all green”) when backend returns differing p50
 function getColorByAnomaly(anomaly: number): string {
   const pct = Number(anomaly)
   if (Number.isNaN(pct)) return '#E0E0E0'
   if (pct < -15) return '#FF4D4D'
   if (pct < -5) return '#FFA726'
   if (pct <= 5) return '#E0E0E0'
-  return '#66BB6A'
+  if (pct <= 15) return '#66BB6A'
+  return '#2E7D32'
 }
 
 // Normalize geometry - handle nested geometries structure
@@ -130,6 +132,7 @@ export function LeafletMapInner({
   yieldAnomalyLoading = false,
 }: LeafletMapInnerProps) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null)
+  const [legendOpen, setLegendOpen] = useState(false)
   const normalizedData = normalizeGeoJSON(geoJSONData)
   
   // Style: fill by Yield Anomaly when data available, else neutral
@@ -213,7 +216,7 @@ export function LeafletMapInner({
         backgroundColor: '#0b1e2d',
         minHeight: '100%'
       }}
-      zoomControl={true}
+      zoomControl={false}
       scrollWheelZoom={true}
       doubleClickZoom={true}
       dragging={true}
@@ -240,29 +243,60 @@ export function LeafletMapInner({
         onBoundsFitted={onBoundsFitted}
       />
 
-      {/* Risk map legend: Yield Anomaly → color (with smooth fade-in) */}
-      <div className="absolute bottom-3 right-3 z-[1000] animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-lg border border-white/80 bg-white/95 px-3 py-2 shadow-md backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-          {yieldAnomalyLoading ? 'Loading risk colors…' : 'Risk map (Yield Anomaly)'}
-        </p>
-        <div className="space-y-1 text-xs">
-          <div className="flex items-center gap-2 transition-opacity duration-200">
-            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#FF4D4D' }} />
-            <span className="text-gray-600 dark:text-gray-400">Critical (&lt;-15%)</span>
+      {/* Кнопка «Легенда» в правом нижнем углу — по клику показывается панель легенды */}
+      <div className="absolute bottom-3 right-3 z-[1000] flex flex-col items-end gap-2">
+        {!legendOpen ? (
+          <button
+            type="button"
+            onClick={() => setLegendOpen(true)}
+            className="flex items-center justify-center w-10 h-10 rounded-xl border border-white/80 bg-white/95 shadow-md backdrop-blur-sm text-gray-600 hover:text-gray-900 hover:bg-white transition-all duration-200 dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
+            title="Показать легенду карты"
+            aria-label="Показать легенду"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+        ) : (
+          <div
+            className="rounded-xl border border-white/80 bg-white/95 shadow-lg backdrop-blur-sm overflow-hidden transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-2"
+            style={{ animationDuration: '250ms' }}
+          >
+            <div className="flex items-center justify-between gap-4 px-3 py-2 border-b border-gray-200/80 dark:border-gray-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                {yieldAnomalyLoading ? 'Загрузка…' : 'Легенда (аномалия урожая)'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setLegendOpen(false)}
+                className="p-1 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-colors"
+                aria-label="Скрыть легенду"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-3 py-2 space-y-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FF4D4D' }} />
+                <span className="text-gray-600 dark:text-gray-400">Критично (&lt;-15%)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#FFA726' }} />
+                <span className="text-gray-600 dark:text-gray-400">Умеренные потери (-15% … -5%)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#E0E0E0' }} />
+                <span className="text-gray-600 dark:text-gray-400">Стабильно (−5% … +5%)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#66BB6A' }} />
+                <span className="text-gray-600 dark:text-gray-400">Рост (+5% … +15%)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-4 rounded shrink-0" style={{ backgroundColor: '#2E7D32' }} />
+                <span className="text-gray-600 dark:text-gray-400">Сильный рост (&gt;+15%)</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2 transition-opacity duration-200">
-            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#FFA726' }} />
-            <span className="text-gray-600 dark:text-gray-400">Moderate loss (-15% to -5%)</span>
-          </div>
-          <div className="flex items-center gap-2 transition-opacity duration-200">
-            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#E0E0E0' }} />
-            <span className="text-gray-600 dark:text-gray-400">Stable (±5%)</span>
-          </div>
-          <div className="flex items-center gap-2 transition-opacity duration-200">
-            <span className="h-3 w-4 rounded shrink-0 transition-transform duration-200 hover:scale-110" style={{ backgroundColor: '#66BB6A' }} />
-            <span className="text-gray-600 dark:text-gray-400">Growth (&gt;+5%)</span>
-          </div>
-        </div>
+        )}
       </div>
       
       {/* Custom CSS: smooth transitions for polygon fill + tooltips and controls */}

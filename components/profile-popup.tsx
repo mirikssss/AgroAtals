@@ -29,9 +29,13 @@ interface User {
 interface ProfilePopupProps {
   user: User
   onLogout: () => void
+  /** Опциональный класс для кнопки-триггера (например, в боковом меню) */
+  triggerClassName?: string
+  /** В боковом меню: показывать ли текст "Profile" рядом с аватаром */
+  showLabel?: boolean
 }
 
-export function ProfilePopup({ user, onLogout }: ProfilePopupProps) {
+export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: ProfilePopupProps) {
   const { language, setLanguage, t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -88,15 +92,26 @@ export function ProfilePopup({ user, onLogout }: ProfilePopupProps) {
       {/* Main Profile Popover */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <button className="rounded-full hover:ring-2 hover:ring-primary/50 transition-all">
-            <Avatar className="h-10 w-10 cursor-pointer">
-              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                {userInitial}
-              </AvatarFallback>
-            </Avatar>
+          <button className={triggerClassName ?? 'rounded-full hover:ring-2 hover:ring-primary/50 transition-all'}>
+            {showLabel ? (
+              <span className="flex items-center gap-3 w-full">
+                <Avatar className="h-10 w-10 cursor-pointer shrink-0">
+                  <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                    {userInitial}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="truncate font-medium">{user.name}</span>
+              </span>
+            ) : (
+              <Avatar className="h-10 w-10 cursor-pointer">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                  {userInitial}
+                </AvatarFallback>
+              </Avatar>
+            )}
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-80 p-0 rounded-lg shadow-lg" align="end">
+        <PopoverContent className="w-80 p-0 rounded-xl shadow-lg shadow-black/5 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/40 dark:border-slate-600/40" align="end">
           {!showSettings ? (
             <div className="space-y-0">
               {/* User Info Section */}

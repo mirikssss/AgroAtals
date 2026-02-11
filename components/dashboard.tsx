@@ -42,7 +42,7 @@ import {
   ReferenceLine,
   ReferenceArea,
 } from 'recharts'
-import { AlertTriangle, TrendingUp, TrendingDown, Gauge, MapPin, Satellite, BarChart3, Download, Settings, LogOut, AlertCircle, CheckCircle, Plus, Bell, Target, Thermometer, Activity } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Gauge, MapPin, Satellite, BarChart3, Download, Settings, AlertCircle, CheckCircle, Plus, Target, Thermometer, Activity, ChevronRight, ChevronLeft } from 'lucide-react'
 import { CentralAsiaMap } from '@/components/central-asia-map'
 import { ProfilePopup } from '@/components/profile-popup'
 import { InteractiveRiskMap } from '@/components/interactive-risk-map'
@@ -99,11 +99,9 @@ const sampleFields = [
 ]
 
 function DashboardOverview() {
-  const { t } = useLanguage()
-
   return (
-    <div className="h-[calc(100vh-200px)] min-h-[600px]">
-      {/* Interactive Risk Map with KPI Cards (66/33 split) */}
+    <div className="w-full h-full min-h-0">
+      {/* Карта на весь экран; KPI карточки закомментированы в InteractiveRiskMap */}
       <InteractiveRiskMap />
     </div>
   )
@@ -783,84 +781,115 @@ function FieldsSection() {
   )
 }
 
+const SIDEBAR_COLLAPSED_W = 72
+const SIDEBAR_EXPANDED_W = 280
+
+const navItems: { id: string; icon: React.ComponentType<{ className?: string }>; labelKey: string }[] = [
+  { id: 'dashboard', icon: BarChart3, labelKey: 'dashboard' },
+  { id: 'portfolio', icon: Target, labelKey: 'portfolio' },
+  { id: 'analytics', icon: Activity, labelKey: 'analytics' },
+  { id: 'fields', icon: MapPin, labelKey: 'fields' },
+]
+
 export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const { user, logout } = useAuth()
   const { t } = useLanguage()
 
-  const userInitial = user?.name?.[0]?.toUpperCase() || user?.email[0].toUpperCase() || 'U'
+  const sidebarW = sidebarExpanded ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <button 
-              onClick={onNavigateToLanding}
-              className="flex items-center gap-3 hover:opacity-80 transition"
-            >
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Satellite className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <h1 className="text-2xl font-bold text-foreground">AgroRisk</h1>
-            </button>
-            
-            {/* Right side icons */}
-            <div className="flex items-center gap-4">
-              {/* Notification Icon */}
-              <button className="relative p-2 hover:bg-muted rounded-2xl transition-all duration-300 ease-out">
-                <Bell className="w-5 h-5 text-muted-foreground hover:text-foreground" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
-
-              {/* User Profile */}
-              <ProfilePopup 
-                user={{
-                  name: user?.name || user?.email.split('@')[0] || 'User',
-                  email: user?.email || '',
-                  organization: 'AgroRisk',
-                  role: 'Risk Analyst'
-                }}
-                onLogout={logout}
-              />
-            </div>
+    <div className="min-h-screen h-screen flex bg-background overflow-hidden">
+      {/* Боковая панель: прозрачность через rgb(.../0.3), не сплошной белый */}
+      <aside
+        className="fixed top-0 left-0 h-full z-50 flex flex-col backdrop-blur-md border-r border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 transition-[width] duration-200 ease-out overflow-hidden bg-[rgb(255_255_255/0.3)] dark:bg-[rgb(15_23_42/0.4)]"
+        style={{ width: sidebarW }}
+      >
+        {/* Логотип: по центру в свёрнутом виде */}
+        <div
+          className={`flex items-center shrink-0 h-14 border-b border-white/40 dark:border-slate-600/40 ${sidebarExpanded ? 'justify-start px-3' : 'justify-center px-0'}`}
+        >
+          <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
+            <Satellite className="w-5 h-5 text-white" />
           </div>
-
-          {/* Navigation Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="bg-transparent border-b-0 rounded-none h-auto gap-4 p-0 pb-4 w-full justify-start">
-              <TabsTrigger
-                value="dashboard"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
-              >
-                {t('dashboard')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="portfolio"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
-              >
-                {t('portfolio')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="analytics"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
-              >
-                {t('analytics')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="fields"
-                className="rounded-2xl px-4 py-2 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium text-sm transition-all duration-300 ease-out hover:text-foreground hover:bg-muted/50 border-0"
-              >
-                {t('fields')}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {sidebarExpanded && (
+            <span className="ml-3 text-lg font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">AgroRisk</span>
+          )}
         </div>
-      </header>
 
-      {/* Main Content - z-0 so header (z-50) stays on top when scrolling */}
-      <main className="relative z-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Навигация: иконки всегда, подписи при раскрытии */}
+        <nav className="flex-1 p-2 space-y-1 overflow-auto min-h-0">
+          {navItems.map(({ id, icon: Icon, labelKey }) => {
+            const isActive = activeTab === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                title={!sidebarExpanded ? t(labelKey) : undefined}
+                className={`
+                  w-full flex items-center rounded-xl font-medium transition-colors
+                  ${sidebarExpanded ? 'gap-3 px-4 py-3 text-left' : 'justify-center p-3'}
+                  ${isActive
+                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
+                  }
+                `}
+              >
+                <Icon className="w-6 h-6 shrink-0" />
+                {sidebarExpanded && <span className="whitespace-nowrap">{t(labelKey)}</span>}
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Низ: только профиль и кнопка раскрытия */}
+        <div className="shrink-0 p-2 border-t border-white/40 dark:border-slate-600/40 space-y-1">
+          <div className={sidebarExpanded ? 'pt-1' : ''}>
+            <ProfilePopup
+              user={{
+                name: user?.name || user?.email.split('@')[0] || 'User',
+                email: user?.email || '',
+                organization: 'AgroRisk',
+                role: 'Risk Analyst'
+              }}
+              onLogout={() => {
+                setSidebarExpanded(false)
+                logout()
+              }}
+              showLabel={sidebarExpanded}
+              triggerClassName={
+                sidebarExpanded
+                  ? 'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors font-medium'
+                  : 'w-full flex justify-center p-3 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors'
+              }
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setSidebarExpanded((e) => !e)}
+            className="w-full flex items-center rounded-xl font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors"
+            aria-label={sidebarExpanded ? 'Свернуть меню' : 'Раскрыть меню'}
+            title={sidebarExpanded ? 'Свернуть меню' : 'Раскрыть меню'}
+          >
+            {sidebarExpanded ? (
+              <>
+                <ChevronLeft className="w-6 h-6 shrink-0" />
+                <span className="ml-1 whitespace-nowrap text-sm">Свернуть</span>
+              </>
+            ) : (
+              <ChevronRight className="w-6 h-6 shrink-0 mx-auto" />
+            )}
+          </button>
+        </div>
+      </aside>
+
+      {/* Контент: отступ слева = ширина панели */}
+      <main
+        className="relative z-0 flex-1 min-h-0 min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-out"
+        style={{ marginLeft: sidebarW }}
+      >
         {activeTab === 'dashboard' && <DashboardOverview />}
         {activeTab === 'portfolio' && <PortfolioSection />}
         {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}

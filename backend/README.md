@@ -40,7 +40,7 @@
 ### 1. Переменные окружения
 
 - **Dashboard**: `AI_SERVICE_URL`, `RISK_SERVICE_URL` (по умолчанию `http://localhost:8001`, `http://localhost:8002`), `DATASET_PATH`, `DEPLOYMENT_DIR`, `DISTRICTS_DIR` (опционально).
-- **AI Service**: `GEMINI_API_KEY` или `NEXT_PUBLIC_GEMINI_API_KEY` (в `.env` или `.env.local` в корне проекта).
+- **AI Service**: `GEMINI_API_KEY` (в `ai_service/.env`). Опционально `GEMINI_MODEL` (по умолчанию `gemini-2.5-flash`; при 404 укажите, например, `gemini-2.0-flash`).
 - **Risk Service**: `DEPLOYMENT_DIR` (по умолчанию `backend/deployment` — папка с `inference.py`, моделями, `config.json`).
 
 Убедитесь, что в `backend/deployment` есть `config.json`, `model_p10.joblib`, `model_p50.joblib`, `model_p90.joblib` и при необходимости `dataset.csv` (путь задаётся через `DATASET_PATH` для dashboard).

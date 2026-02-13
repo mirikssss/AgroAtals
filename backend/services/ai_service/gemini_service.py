@@ -27,8 +27,9 @@ GEMINI_TIMEOUT_GENERIC = 20
 GEMINI_MAX_OUTPUT_TIPS = 400
 GEMINI_MAX_OUTPUT_RECOMMEND = 2048
 GEMINI_MAX_OUTPUT_EXPLAIN = 4096
-# Модель Gemini (404 = неверный ID; 429 = квота). Можно переопределить через GEMINI_MODEL в .env
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+# Модель Gemini (404 = неверный ID; 429 = квота). Переопределить через GEMINI_MODEL в .env.
+# Актуальные: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash, gemini-3-flash-preview
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_MAX_OUTPUT_STRUCTURED = 2048
 GEMINI_TIMEOUT_STRUCTURED = 20
 
@@ -84,7 +85,9 @@ def _call_gemini(
         if e.code == 429:
             logger.warning("Gemini 429 (quota), using fallback")
         elif e.code == 404:
-            logger.warning("Gemini 404 (model not found). Check GEMINI_MODEL in .env (e.g. gemini-1.5-flash or gemini-1.0-flash).")
+            logger.warning(
+                "Gemini 404 (model not found). Set GEMINI_MODEL in ai_service/.env to a valid model, e.g. gemini-2.5-flash or gemini-2.0-flash."
+            )
         elif e.code == 403:
             logger.warning("Gemini 403 (Forbidden). Check GEMINI_API_KEY and enable Generative Language API.")
         else:
@@ -321,6 +324,7 @@ def _build_structured_user_prompt(scope: dict, kpi_key: str, kpi_values: dict, m
 
 def _explain_kpi_structured_fallback(scope: dict, kpi_key: str, reason: str) -> dict[str, Any]:
     """Минимальная структура при ошибке или отсутствии ответа Gemini."""
+    disclaimer = "Check GEMINI_API_KEY and GEMINI_MODEL in ai_service/.env (e.g. GEMINI_MODEL=gemini-2.5-flash)."
     return {
         "title": f"KPI: {kpi_key}",
         "subtitle": f"{scope.get('crop', '')} · {scope.get('year', '')}",
@@ -331,7 +335,7 @@ def _explain_kpi_structured_fallback(scope: dict, kpi_key: str, reason: str) -> 
         "table": None,
         "confidence": {"level": "low", "reason": "Fallback", "limitations": [reason]},
         "next_actions": [],
-        "disclaimer": "Check GEMINI_API_KEY in ai_service/.env or try again.",
+        "disclaimer": disclaimer,
     }
 
 

@@ -71,7 +71,7 @@ def _call_gemini(
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
     body = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
     }).encode("utf-8")
 
@@ -81,6 +81,11 @@ def _call_gemini(
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
         if e.code == 429:
             logger.warning("Gemini 429 (quota), using fallback")
         elif e.code == 404:
@@ -89,8 +94,10 @@ def _call_gemini(
             )
         elif e.code == 403:
             logger.warning("Gemini 403 (Forbidden). Check GEMINI_API_KEY and enable Generative Language API.")
+        elif e.code == 400:
+            logger.warning("Gemini 400 Bad Request. Response: %s", err_body or "(no body)")
         else:
-            logger.warning("Gemini HTTP error: %s %s", e.code, getattr(e, "reason", e))
+            logger.warning("Gemini HTTP error: %s %s. Response: %s", e.code, getattr(e, "reason", e), err_body or "")
         return None
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
         logger.warning("Gemini request error: %s", getattr(e, "reason", e))
@@ -139,7 +146,7 @@ def get_tips(
 Формат: только список советов, по одному на строку, без нумерации и заголовков. Короткие фразы."""
 
     body = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": GEMINI_MAX_OUTPUT_TIPS},
     }).encode("utf-8")
 
@@ -150,7 +157,12 @@ def get_tips(
         with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT_TIPS, context=ctx) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
-        logger.warning("Tips: Gemini HTTP %s %s. Using fallback.", e.code, getattr(e, "reason", ""))
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
+        logger.warning("Tips: Gemini HTTP %s %s. Body: %s. Using fallback.", e.code, getattr(e, "reason", ""), err_body or "(none)")
         return _fallback_ai_tips()
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
         logger.warning("Tips: Gemini request failed: %s. Using fallback.", getattr(e, "reason", e))

@@ -49,7 +49,7 @@ def startup() -> None:
 
 
 @app.get("/")
-def root() -> dict[str, str]:
+def root() -> dict[str, Any]:
     return {
         "service": "AgroAtlas Risk Service",
         "docs": "/docs",

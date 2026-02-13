@@ -81,3 +81,49 @@ AI_SERVICE_URL=http://127.0.0.1:8001
 
 - **503 и Connection refused** = Dashboard не видит Risk и/или AI сервисы.
 - **Что сделать:** запустить Risk (8002) и AI (8001), задать для Dashboard `RISK_SERVICE_URL` и `AI_SERVICE_URL`, перезапустить Dashboard и проверить `/dashboard/health/dependencies`.
+
+---
+
+## Бэкенд на Render + фронт на Vercel
+
+### Схема
+
+На Render нужны **три отдельных Web Service** (один репозиторий — три сервиса с разными Root Directory и командами):
+
+| Сервис на Render | Root Directory | Переменные окружения | Start Command |
+|------------------|----------------|----------------------|---------------|
+| **Dashboard** | `backend/services/dashboard` | `RISK_SERVICE_URL=https://ваш-risk-service.onrender.com`<br>`AI_SERVICE_URL=https://ваш-ai-service.onrender.com`<br>`PORT=10000` (или как даёт Render) | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
+| **AI Service** | `backend/services/ai_service` | `GEMINI_API_KEY=...`<br>`GEMINI_MODEL=gemini-2.5-flash` (опционально)<br>`PORT=10000` | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
+| **Risk Service** | `backend/services/risk_service` | `PORT=10000` | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
+
+**Важно:** сначала создайте и задеплойте **Risk** и **AI** — возьмите их URL из Render (например `https://your-app-risk.onrender.com`). Потом в сервисе **Dashboard** пропишите эти URL в `RISK_SERVICE_URL` и `AI_SERVICE_URL` и задеплойте Dashboard.
+
+### Render: что сделать сейчас
+
+1. **Если у вас один сервис (только Dashboard)**  
+   - Создайте ещё два Web Service в том же Render-аккаунте из того же репо: один для **Risk**, один для **AI** (Root Directory и Start Command из таблицы выше).  
+   - У каждого сервиса будет свой URL. В **Dashboard** в Environment Variables добавьте:
+     - `RISK_SERVICE_URL` = URL Risk-сервиса (без слэша в конце)
+     - `AI_SERVICE_URL` = URL AI-сервиса (без слэша в конце)
+   - В **AI Service** на Render добавьте переменную `GEMINI_API_KEY` (и при желании `GEMINI_MODEL=gemini-2.5-flash`).  
+   - Нажмите **Save, rebuild, and deploy** для каждого сервиса после изменения переменных.
+
+2. **Проверка бэкенда**  
+   После деплоя откройте в браузере:
+   ```text
+   https://ваш-dashboard-url.onrender.com/dashboard/health/dependencies
+   ```
+   В ответе должно быть `risk_service.reachable: true` и `ai_service.reachable: true`. Если нет — проверьте URL и что Risk и AI сервисы запущены (на Render они могут «засыпать» при free tier — первый запрос будет долгим).
+
+### Vercel (фронт): что сделать
+
+1. В настройках проекта → **Environment Variables** добавьте (или проверьте):
+   - **Key:** `NEXT_PUBLIC_DASHBOARD_API_URL`  
+   - **Value:** `https://ваш-dashboard-url.onrender.com` (URL именно Dashboard на Render, без слэша в конце)
+
+2. Сохраните и сделайте **Redeploy**, чтобы новая переменная подхватилась при сборке (NEXT_PUBLIC_* встраивается в билд).
+
+### Итог
+
+- **Render:** три сервиса (Dashboard, AI, Risk), у Dashboard заданы `RISK_SERVICE_URL` и `AI_SERVICE_URL`, у AI — `GEMINI_API_KEY` (и при необходимости `GEMINI_MODEL`).  
+- **Vercel:** `NEXT_PUBLIC_DASHBOARD_API_URL` указывает на URL Dashboard на Render, после изменений — Redeploy.

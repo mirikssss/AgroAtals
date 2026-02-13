@@ -885,15 +885,19 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
         </div>
       </aside>
 
-      {/* Контент: отступ слева = ширина панели */}
+      {/* Контент: отступ слева = ширина панели. Для вкладок кроме dashboard — скролл и отступы. */}
       <main
-        className="relative z-0 flex-1 min-h-0 min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-out"
+        className="relative z-0 flex-1 min-h-0 min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-out flex flex-col"
         style={{ marginLeft: sidebarW }}
       >
         {activeTab === 'dashboard' && <DashboardOverview />}
-        {activeTab === 'portfolio' && <PortfolioSection />}
-        {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}
-        {activeTab === 'fields' && <FieldsSection />}
+        {(activeTab === 'portfolio' || activeTab === 'analytics' || activeTab === 'fields') && (
+          <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6 lg:p-8">
+            {activeTab === 'portfolio' && <PortfolioSection />}
+            {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}
+            {activeTab === 'fields' && <FieldsSection />}
+          </div>
+        )}
       </main>
     </div>
   )

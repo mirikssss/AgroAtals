@@ -110,12 +110,17 @@ def _log_routes() -> None:
     print("Dashboard startup paths:")
     print(f"  DATASET_PATH={DATASET_PATH} exists={DATASET_PATH.exists()}")
     print(f"  DISTRICTS_DIR={DISTRICTS_DIR} exists={DISTRICTS_DIR.exists()}")
+    print(f"  RISK_SERVICE_URL={RISK_SERVICE_URL}")
+    print(f"  AI_SERVICE_URL={AI_SERVICE_URL}")
     if DISTRICTS_DIR.exists():
         jsons = list(DISTRICTS_DIR.glob("*.json"))
         print(f"  DISTRICTS_DIR has {len(jsons)} *.json files")
     else:
         print("  WARNING: DISTRICTS_DIR missing — KPI по областям будут fallback на country!")
-    logging.info("Paths: DATASET_PATH=%s DISTRICTS_DIR=%s", DATASET_PATH, DISTRICTS_DIR)
+    logging.info(
+        "Paths: DATASET_PATH=%s DISTRICTS_DIR=%s RISK_SERVICE_URL=%s AI_SERVICE_URL=%s",
+        DATASET_PATH, DISTRICTS_DIR, RISK_SERVICE_URL, AI_SERVICE_URL,
+    )
 
 
 app.add_middleware(
@@ -959,6 +964,7 @@ def root() -> dict[str, str]:
         "service": "AgroAtlas Dashboard API",
         "docs": "/docs",
         "health": "/health",
+        "health_dependencies": "/dashboard/health/dependencies",
         "metrics": "/dashboard/metrics",
         "kpi-cards": "/dashboard/kpi-cards",
         "recommend": "/dashboard/recommend",
@@ -970,6 +976,29 @@ def root() -> dict[str, str]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/dashboard/health/dependencies")
+def health_dependencies() -> dict[str, Any]:
+    """
+    Проверка доступности Risk и AI сервисов. Для диагностики в проде.
+    Возвращает 200 всегда; смотрите risk_service/ai_service в теле ответа.
+    """
+    result: dict[str, Any] = {
+        "risk_service": {"reachable": False, "url": RISK_SERVICE_URL, "error": None},
+        "ai_service": {"reachable": False, "url": AI_SERVICE_URL, "error": None},
+    }
+    timeout = 3.0
+    for name, url_key in [("risk_service", RISK_SERVICE_URL), ("ai_service", AI_SERVICE_URL)]:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.get(f"{url_key}/health")
+                result[name]["reachable"] = r.status_code == 200
+                if r.status_code != 200:
+                    result[name]["error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            result[name]["error"] = str(e)
+    return result
 
 
 @app.get("/dashboard/kpi-cards")

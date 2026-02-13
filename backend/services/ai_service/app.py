@@ -62,6 +62,21 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/env-check")
+def env_check() -> dict[str, str | bool]:
+    """
+    Диагностика: проверка переменных окружения без раскрытия секретов.
+    Вызови: curl https://твой-ai-service.onrender.com/env-check
+    """
+    import os
+    key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    model = (os.environ.get("GEMINI_MODEL") or "not set (default used)").strip()
+    return {
+        "GEMINI_API_KEY_set": bool(len(key) > 0),
+        "GEMINI_MODEL": model if model else "not set",
+    }
+
+
 @app.post("/tips", response_model=TipsResponse)
 def api_tips(req: TipsRequest) -> TipsResponse:
     """

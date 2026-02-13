@@ -94,9 +94,11 @@ AI_SERVICE_URL=http://127.0.0.1:8001
 |------------------|----------------|----------------------|---------------|
 | **Dashboard** | `backend/services/dashboard` | `RISK_SERVICE_URL=https://ваш-risk-service.onrender.com`<br>`AI_SERVICE_URL=https://ваш-ai-service.onrender.com`<br>`PORT=10000` (или как даёт Render) | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
 | **AI Service** | `backend/services/ai_service` | `GEMINI_API_KEY=...`<br>`GEMINI_MODEL=gemini-2.5-flash` (опционально)<br>`PORT=10000` | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
-| **Risk Service** | `backend/services/risk_service` | `PORT=10000` | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
+| **Risk Service** | `backend/services/risk_service` | `PORT` задаёт Render сам | `pip install -r requirements.txt && uvicorn app:app --host 0.0.0.0 --port $PORT` |
 
-**Важно:** сначала создайте и задеплойте **Risk** и **AI** — возьмите их URL из Render (например `https://your-app-risk.onrender.com`). Потом в сервисе **Dashboard** пропишите эти URL в `RISK_SERVICE_URL` и `AI_SERVICE_URL` и задеплойте Dashboard.
+**Важно:**  
+- На Render в Start Command **обязательно** используйте `--port $PORT`, а не `--port 8002` или `8001`. Иначе Render не увидит открытый порт и деплой упадёт с «Port scan timeout / no open ports detected».  
+- Сначала создайте и задеплойте **Risk** и **AI**, возьмите их URL. Потом в сервисе **Dashboard** пропишите эти URL в `RISK_SERVICE_URL` и `AI_SERVICE_URL` и задеплойте Dashboard.
 
 ### Render: что сделать сейчас
 

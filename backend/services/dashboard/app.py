@@ -86,7 +86,7 @@ else:
 # URL микросервисов
 AI_SERVICE_URL = (os.environ.get("AI_SERVICE_URL") or "http://localhost:8001").rstrip("/")
 RISK_SERVICE_URL = (os.environ.get("RISK_SERVICE_URL") or "http://localhost:8002").rstrip("/")
-HTTP_TIMEOUT = float(os.environ.get("DASHBOARD_HTTP_TIMEOUT", "25.0"))
+HTTP_TIMEOUT = float(os.environ.get("DASHBOARD_HTTP_TIMEOUT", "120.0"))
 
 # DSCR reference (portfolio normalization: 1 ha)
 BASE_YIELD_T_HA: dict[str, float] = {"wheat": 3.0, "cotton": 2.5, "rice": 4.0}
@@ -833,7 +833,7 @@ def _fetch_kpi_cards_uncached(
         computed_region = df_region["region_id"].dropna().astype(str).iloc[0]
     if not computed_region:
         computed_region = region_id if region_level != "country" else country
-    with httpx.Client(timeout=min(HTTP_TIMEOUT, 8.0)) as client:
+    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
         risk_resp = client.post(
             f"{RISK_SERVICE_URL}/predict",
             json={
@@ -1166,9 +1166,8 @@ def dashboard_recommend(req: RegionDataRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="AI service unavailable") from e
 
 
-# Max body size for kpi-explain (avoid huge payloads)
-KPI_EXPLAIN_MAX_BODY = 50_000
-KPI_EXPLAIN_TIMEOUT = 30.0
+KPI_EXPLAIN_MAX_BODY = 1_000_000
+KPI_EXPLAIN_TIMEOUT = 120.0
 
 
 def _scope_hash(scope: Any) -> str:

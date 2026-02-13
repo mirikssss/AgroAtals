@@ -21,17 +21,16 @@ load_dotenv(os.path.join(_SERVICE_DIR, ".env"))
 
 logger = logging.getLogger(__name__)
 
-# Лимиты для безопасности и стабильности
-GEMINI_TIMEOUT_TIPS = 15
-GEMINI_TIMEOUT_GENERIC = 20
-GEMINI_MAX_OUTPUT_TIPS = 400
-GEMINI_MAX_OUTPUT_RECOMMEND = 2048
-GEMINI_MAX_OUTPUT_EXPLAIN = 4096
+# Таймауты и лимиты вывода (без жёстких ограничений)
+GEMINI_TIMEOUT_TIPS = 300
+GEMINI_TIMEOUT_GENERIC = 300
+GEMINI_MAX_OUTPUT_TIPS = 8192
+GEMINI_MAX_OUTPUT_RECOMMEND = 8192
+GEMINI_MAX_OUTPUT_EXPLAIN = 8192
 # Модель Gemini (404 = неверный ID; 429 = квота). Переопределить через GEMINI_MODEL в .env.
-# Актуальные: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash, gemini-3-flash-preview
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_MAX_OUTPUT_STRUCTURED = 2048
-GEMINI_TIMEOUT_STRUCTURED = 20
+GEMINI_MAX_OUTPUT_STRUCTURED = 8192
+GEMINI_TIMEOUT_STRUCTURED = 300
 
 
 def _get_api_key() -> str:
@@ -60,7 +59,7 @@ def _fallback_ai_tips() -> list[str]:
 def _call_gemini(
     prompt: str,
     temperature: float = 0.7,
-    max_output_tokens: int = 1024,
+    max_output_tokens: int = 8192,
     timeout: int = GEMINI_TIMEOUT_GENERIC,
 ) -> Optional[str]:
     """
@@ -129,6 +128,7 @@ def get_tips(
     """
     api_key = _get_api_key()
     if not api_key:
+        logger.warning("Tips: GEMINI_API_KEY not set or empty. Set GEMINI_API_KEY in Render env (AI service). Using fallback.")
         return _fallback_ai_tips()
 
     lang_instr = _lang_instruction(lang)
@@ -149,12 +149,11 @@ def get_tips(
         ctx = ssl.create_default_context()
         with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT_TIPS, context=ctx) as resp:
             data = json.loads(resp.read().decode())
-    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError) as e:
-        if isinstance(e, urllib.error.HTTPError):
-            if e.code == 429:
-                logger.warning("Gemini 429 (quota), using fallback tips")
-            elif e.code == 403:
-                logger.warning("Gemini 403 (Forbidden). Check GEMINI_API_KEY.")
+    except urllib.error.HTTPError as e:
+        logger.warning("Tips: Gemini HTTP %s %s. Using fallback.", e.code, getattr(e, "reason", ""))
+        return _fallback_ai_tips()
+    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+        logger.warning("Tips: Gemini request failed: %s. Using fallback.", getattr(e, "reason", e))
         return _fallback_ai_tips()
 
     try:
@@ -184,39 +183,76 @@ def _build_recommend_prompt(data: dict[str, Any]) -> str:
     year = data.get("year")
     lang = (data.get("language") or "en").lower()[:2]
     lang_instr = _lang_instruction(lang)
-    return f"""Ты — кредитный советник по агро-рискам. Дай структурированную рекомендацию для региона {region}, культура {crop}, год {year}. {lang_instr}
+    ndvi = data.get("NDVI")
+    ndvi_anom = data.get("NDVI_anomaly")
+    if ndvi_anom is not None and abs(ndvi_anom) <= 1 and (ndvi_anom == 0 or 0.001 < abs(ndvi_anom) < 1.5):
+        ndvi_anom = (ndvi_anom * 100) if abs(ndvi_anom) <= 1.5 else ndvi_anom
+    precip = data.get("precipitation_total_mm")
+    temp = data.get("temperature_mean_C")
+    risk = data.get("risk_category")
+    yield_anom = data.get("yieldAnomaly")
+    htc = data.get("htcIndex")
+    dscr = data.get("dscr")
+    data_line = f"NDVI={ndvi}, аномалия NDVI={ndvi_anom}%, осадки={precip} мм, температура={temp}°C, категория риска={risk}".replace("None", "—")
+    if yield_anom is not None:
+        data_line += f", аномалия урожая={yield_anom}%"
+    if htc is not None:
+        data_line += f", HTC={htc}"
+    if dscr is not None:
+        data_line += f", DSCR={dscr}"
+    return f"""Ты — агрокредитный советник. Дай конкретную рекомендацию именно для этого поля, не общие фразы. {lang_instr}
 
-Данные: NDVI={data.get('NDVI')}, осадки={data.get('precipitation_total_mm')}, температура={data.get('temperature_mean_C')}, риск={data.get('risk_category')}.
+Регион/поле: {region}. Культура: {crop}. Год: {year}.
+Данные: {data_line}.
 
-Верни 4 блока в формате:
-riskAssessment: ...
-immediateActions: ...
-seasonalOutlook: ...
-resourceOptimization: ...
-Каждый блок — 2–4 предложения. Без markdown."""
+Напиши 4 блока — каждый 2–4 предложения с конкретикой (цифры, уровень риска, что делать именно здесь). Формат строго по одной строке на ключ:
+riskAssessment: (оценка риска для этого поля с учётом NDVI и категории риска)
+immediateActions: (конкретные действия на ближайшие недели)
+seasonalOutlook: (прогноз на сезон для {crop} в {region})
+resourceOptimization: (рекомендации по воде/удобрениям/страховке для этих условий)
+
+Только эти 4 строки, без markdown и без лишнего текста."""
 
 
 def _parse_recommend_response(text: str) -> dict[str, str]:
-    sections = {"riskAssessment": "", "immediateActions": "", "seasonalOutlook": "", "resourceOptimization": ""}
+    sections = {"riskAssessment": "", "immediateActions": "", "seasonalOutlook": "", "resourceOptimization": "", "raw": ""}
+    key_aliases = {
+        "riskassessment": "riskAssessment",
+        "risk assessment": "riskAssessment",
+        "immediateactions": "immediateActions",
+        "immediate actions": "immediateActions",
+        "seasonaloutlook": "seasonalOutlook",
+        "seasonal outlook": "seasonalOutlook",
+        "resourceoptimization": "resourceOptimization",
+        "resource optimization": "resourceOptimization",
+    }
     current = None
     for line in text.split("\n"):
-        line = line.strip()
-        for key in sections:
-            if line.lower().startswith(key.lower() + ":"):
+        raw_line = line
+        line = line.strip().lstrip("-*• ")
+        for alias, key in key_aliases.items():
+            if line.lower().startswith(alias + ":"):
                 current = key
                 line = line.split(":", 1)[-1].strip()
                 break
         if current and line:
             sections[current] = (sections[current] + " " + line).strip()
+    sections["raw"] = text.strip()
     return sections
 
 
 def _mock_recommend(data: dict[str, Any]) -> dict[str, str]:
+    region = data.get("region_name", "регион")
+    crop = data.get("crop", "культура")
+    ndvi = data.get("NDVI")
+    risk = data.get("risk_category") or "Moderate"
+    ndvi_s = f" NDVI {ndvi:.2f}." if ndvi is not None and isinstance(ndvi, (int, float)) else ""
     return {
-        "riskAssessment": "Оценка риска на основе спутниковых и агрометрических данных.",
-        "immediateActions": "Мониторить NDVI и аномалии осадков; при ухудшении — запросить отчёт фермера.",
-        "seasonalOutlook": "Сезонный прогноз зависит от выбранного региона и культуры.",
-        "resourceOptimization": "Рекомендуется диверсификация культур и страховка урожая.",
+        "riskAssessment": f"Оценка риска для {region}, {crop}: категория {risk}.{ndvi_s} Данные — спутниковые и агрометрические; для детальной оценки подключите ИИ (Gemini).",
+        "immediateActions": f"Мониторить NDVI и осадки по полю {region}; при снижении вегетации — запросить отчёт фермера и рассмотреть страховку.",
+        "seasonalOutlook": f"Сезонный прогноз для {crop} в {region} зависит от текущих данных; обновление при следующем запросе с ИИ.",
+        "resourceOptimization": "Рекомендуется диверсификация и страховка урожая. Для персональных рекомендаций по воде и удобрениям нужен ответ Gemini.",
+        "raw": "AI recommendation temporarily unavailable (fallback). Check GEMINI_API_KEY and GEMINI_MODEL on AI service.",
     }
 
 
@@ -225,12 +261,17 @@ def get_recommendation(data: dict[str, Any]) -> tuple[dict[str, str], bool]:
     if data.get("year") is None:
         data = {**data, "year": datetime.now().year}
     prompt = _build_recommend_prompt(data)
-    text = _call_gemini(prompt, temperature=0.7, max_output_tokens=GEMINI_MAX_OUTPUT_RECOMMEND)
+    text = _call_gemini(prompt, temperature=0.5, max_output_tokens=GEMINI_MAX_OUTPUT_RECOMMEND)
     if text and text.strip():
         try:
-            return _parse_recommend_response(text), False
+            parsed = _parse_recommend_response(text)
+            if any(parsed.get(k) for k in ("riskAssessment", "immediateActions", "seasonalOutlook", "resourceOptimization")):
+                return parsed, False
+            logger.warning("Recommend: Gemini returned text but no sections parsed. Fallback to mock.")
         except Exception as e:
             logger.warning("Recommend parse error: %s", e)
+    else:
+        logger.warning("Recommend: no Gemini response (check API key, model, quota). Using fallback.")
     return _mock_recommend(data), True
 
 
@@ -410,7 +451,7 @@ def explain_kpi_structured(
             repair_prompt = f"""The following response is not valid JSON. Fix it so it is a single valid JSON object matching the schema (title, subtitle, badges, hero, metrics, sections, table, confidence, next_actions, disclaimer). Output only the corrected JSON, nothing else.
 
 Invalid response:
-{text[:1500]}"""
+{text[:10000]}"""
             repair_text = _call_gemini(
                 repair_prompt,
                 temperature=0.2,

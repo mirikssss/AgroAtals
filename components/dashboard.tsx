@@ -28,10 +28,9 @@ import {
   Line,
   AreaChart,
   Area,
+  BarChart,
   ComposedChart,
   Bar,
-  PieChart,
-  Pie,
   Cell,
   XAxis,
   YAxis,
@@ -558,11 +557,7 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
   const { t } = useLanguage()
   const [chartData, setChartData] = useState<ChartDataState>({
     ndviAnomalyTimeline: [],
-    riskDistribution: [
-      { name: 'Low Risk', value: 33, color: '#10B981' },
-      { name: 'Moderate Risk', value: 34, color: '#f59e0b' },
-      { name: 'High Risk', value: 33, color: '#ef4444' },
-    ],
+    riskDistribution: [],
     precipVsVegetation: [],
   })
 
@@ -570,15 +565,39 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
     const url = new URL('/dashboard/chart-data', DASHBOARD_API_URL)
     url.searchParams.set('country', 'UZB')
     url.searchParams.set('crop', field.crop.toLowerCase())
-    url.searchParams.set('scope', 'country')
+    if (field.district?.trim()) {
+      url.searchParams.set('scope', 'district')
+      url.searchParams.set('area_name', field.district.trim())
+    } else if (field.region?.trim()) {
+      url.searchParams.set('scope', 'region')
+      url.searchParams.set('area_name', field.region.trim())
+    } else {
+      url.searchParams.set('scope', 'country')
+    }
     fetch(url.toString())
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then(setChartData)
-      .catch(() => {})
-  }, [field.crop])
+      .catch(() => setChartData({ ndviAnomalyTimeline: [], riskDistribution: [], precipVsVegetation: [] }))
+  }, [field.crop, field.district, field.region])
 
   const r = field.result
   const riskLabel = r.riskCategory === 'LOW' ? t('lowRisk') : r.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')
+  const anomalyValues = chartData.ndviAnomalyTimeline
+    .map((p) => Number(p.anomaly))
+    .filter((v) => Number.isFinite(v))
+  const anomalyMin = anomalyValues.length ? Math.min(...anomalyValues) : -10
+  const anomalyMax = anomalyValues.length ? Math.max(...anomalyValues) : 10
+  const anomalySpan = Math.max(1, anomalyMax - anomalyMin)
+  const anomalyPad = Math.max(2, anomalySpan * 0.2)
+  const anomalyDomain: [number, number] = [
+    Math.floor(Math.min(0, anomalyMin) - anomalyPad),
+    Math.ceil(Math.max(0, anomalyMax) + anomalyPad),
+  ]
+  const scenarioBandData = [
+    { name: 'P10', value: r.p10, color: '#ef4444' },
+    { name: 'P50', value: r.p50, color: '#f59e0b' },
+    { name: 'P90', value: r.p90, color: '#10B981' },
+  ]
 
   return (
     <div className="space-y-6">
@@ -593,24 +612,24 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
       </div>
 
       <Card className="p-4 bg-gradient-to-r from-primary/5 to-primary/0 border-primary/20">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="text-center px-4 border-r border-border/50">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="flex items-stretch flex-wrap gap-2 sm:gap-4">
+            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">DSCR</p>
               <p className={`text-2xl font-bold ${r.dscr >= 1.25 ? 'text-[#10B981]' : r.dscr >= 1.0 ? 'text-orange-600' : 'text-red-600'}`}>
                 {r.dscr.toFixed(2)}x
               </p>
             </div>
-            <div className="text-center px-4 border-r border-border/50">
+            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
               <p className="text-xl font-semibold text-foreground">${r.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
-            <div className="text-center px-4">
+            <div className="text-center px-3 sm:px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
               <p className="text-xl font-semibold text-foreground">${r.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
-          <div className={`px-4 py-2 rounded-lg ${r.dscr >= 1.25 ? 'bg-green-100 dark:bg-green-950/50' : r.dscr >= 1.0 ? 'bg-orange-100 dark:bg-orange-950/50' : 'bg-red-100 dark:bg-red-950/50'}`}>
+          <div className={`px-4 py-2 rounded-lg w-full sm:w-auto ${r.dscr >= 1.25 ? 'bg-green-100 dark:bg-green-950/50' : r.dscr >= 1.0 ? 'bg-orange-100 dark:bg-orange-950/50' : 'bg-red-100 dark:bg-red-950/50'}`}>
             <span className="text-xs font-medium uppercase opacity-90">{t('creditRiskLabel')}</span>
             <span className="block font-medium">
               {r.dscr >= 1.25 ? t('creditworthy') : r.dscr >= 1.0 ? t('marginal') : t('highDefaultRisk')}
@@ -619,7 +638,7 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
         </div>
       </Card>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <Card className="p-4 border-border/50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase">{t('predictedYield')}</span>
@@ -650,47 +669,67 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
         <Card className="p-4">
           <h3 className="font-semibold text-foreground mb-2">{t('ndviAnomalyTimeline')}</h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData.ndviAnomalyTimeline.length ? chartData.ndviAnomalyTimeline : [{ year: new Date().getFullYear(), anomaly: 0, baseline: 0 }]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} domain={[-25, 10]} />
-                <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-                <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
-                <Line type="monotone" dataKey="anomaly" stroke="var(--primary)" strokeWidth={2} dot={{ r: 4 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            {chartData.ndviAnomalyTimeline.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData.ndviAnomalyTimeline} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} domain={anomalyDomain} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    formatter={(value: number) => [`${Number(value).toFixed(1)}%`, t('yieldAnomaly')]}
+                    contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                  />
+                  <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
+                  <Line type="monotone" dataKey="anomaly" stroke="var(--primary)" strokeWidth={2} dot={{ r: 4 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">{t('noData')}</div>
+            )}
           </div>
         </Card>
         <Card className="p-4">
-          <h3 className="font-semibold text-foreground mb-2">{t('riskDistribution')}</h3>
+          <h3 className="font-semibold text-foreground mb-2">{t('yieldScenarioBand')}</h3>
+          <p className="text-xs text-muted-foreground mb-2">{t('bankingScenarioSubtitle')}</p>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={chartData.riskDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
-                  {chartData.riskDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Pie>
-                <Tooltip formatter={(value: number) => [`${value}%`, 'Fields']} contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-xs">{value}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
+            {scenarioBandData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={scenarioBandData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip formatter={(value: number) => [`${Number(value).toFixed(1)}%`, t('yieldAnomaly')]} contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
+                  <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                    {scenarioBandData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">{t('noData')}</div>
+            )}
           </div>
+          <p className="text-xs text-muted-foreground italic mt-2">{t('scenarioBandFootnote')}</p>
         </Card>
         <Card className="p-4">
           <h3 className="font-semibold text-foreground mb-2">{t('precipVsVegetation')}</h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData.precipVsVegetation.length ? chartData.precipVsVegetation : [{ year: new Date().getFullYear(), precipitation: 0, ndvi: 0 }]} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} stroke="#3b82f6" domain={[0, 500]} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} stroke="#10B981" domain={[0, 1]} />
-                <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-                <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
-                <Bar yAxisId="left" dataKey="precipitation" fill="#3b82f6" name="Precipitation (mm)" radius={[4, 4, 0, 0]} fillOpacity={0.7} />
-                <Line yAxisId="right" type="monotone" dataKey="ndvi" stroke="#10B981" name="NDVI Index" strokeWidth={2} dot={{ r: 3 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            {chartData.precipVsVegetation.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData.precipVsVegetation} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} stroke="#3b82f6" domain={[0, 500]} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} stroke="#10B981" domain={[0, 1]} />
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
+                  <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
+                  <Bar yAxisId="left" dataKey="precipitation" fill="#3b82f6" name="Precipitation (mm)" radius={[4, 4, 0, 0]} fillOpacity={0.7} />
+                  <Line yAxisId="right" type="monotone" dataKey="ndvi" stroke="#10B981" name="NDVI Index" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">{t('noData')}</div>
+            )}
           </div>
         </Card>
       </div>
@@ -738,7 +777,7 @@ function FieldsSection() {
           <p className="text-sm text-muted-foreground">{t('createFirstAsset')}</p>
         </Card>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-lg border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -794,16 +833,24 @@ const navItems: { id: string; icon: React.ComponentType<{ className?: string }>;
 export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const { user, logout } = useAuth()
   const { t } = useLanguage()
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const sidebarW = sidebarExpanded ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W
 
   return (
-    <div className="min-h-screen h-screen flex bg-background overflow-hidden">
+    <div className="min-h-screen md:h-screen flex bg-background md:overflow-hidden">
       {/* Боковая панель: прозрачность через rgb(.../0.3), не сплошной белый */}
       <aside
-        className="fixed top-0 left-0 h-full z-50 flex flex-col backdrop-blur-md border-r border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 transition-[width] duration-200 ease-out overflow-hidden bg-[rgb(255_255_255/0.3)] dark:bg-[rgb(15_23_42/0.4)]"
+        className="hidden md:fixed md:top-0 md:left-0 md:h-full md:z-50 md:flex md:flex-col backdrop-blur-md border-r border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 transition-[width] duration-200 ease-out overflow-hidden bg-[rgb(255_255_255/0.3)] dark:bg-[rgb(15_23_42/0.4)]"
         style={{ width: sidebarW }}
       >
         {/* Логотип: по центру в свёрнутом виде */}
@@ -887,18 +934,56 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
 
       {/* Контент: отступ слева = ширина панели. Для вкладок кроме dashboard — скролл и отступы. */}
       <main
-        className="relative z-0 flex-1 min-h-0 min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-out flex flex-col"
-        style={{ marginLeft: sidebarW }}
+        className="relative z-0 flex-1 min-h-0 min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-out flex flex-col pb-20 md:pb-0"
+        style={{ marginLeft: isMobile ? 0 : sidebarW }}
       >
+        {isMobile && (
+          <div className="fixed top-3 right-3 z-[60]">
+            <ProfilePopup
+              user={{
+                name: user?.name || user?.email.split('@')[0] || 'User',
+                email: user?.email || '',
+                organization: 'AgroRisk',
+                role: 'Risk Analyst',
+              }}
+              onLogout={logout}
+              triggerClassName="rounded-full bg-background/80 backdrop-blur border border-border/60 p-1 shadow-md transition-all hover:shadow-lg hover:scale-105"
+            />
+          </div>
+        )}
         {activeTab === 'dashboard' && <DashboardOverview />}
         {(activeTab === 'portfolio' || activeTab === 'analytics' || activeTab === 'fields') && (
-          <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6 lg:p-8">
+          <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-5 md:p-6 lg:p-8">
             {activeTab === 'portfolio' && <PortfolioSection />}
             {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}
             {activeTab === 'fields' && <FieldsSection />}
           </div>
         )}
       </main>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[70] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="grid grid-cols-4 gap-1 px-2 py-2">
+          {navItems.map(({ id, icon: Icon, labelKey }) => {
+            const isActive = activeTab === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={`flex flex-col items-center justify-center rounded-lg py-2 text-[11px] transition-all ${
+                  isActive
+                    ? 'bg-primary/10 text-primary scale-[1.02]'
+                    : 'text-muted-foreground hover:bg-muted/60'
+                }`}
+              >
+                <Icon className="w-5 h-5 mb-1" />
+                <span>{t(labelKey)}</span>
+              </button>
+            )
+          })}
+        </div>
+      </nav>
     </div>
   )
 }

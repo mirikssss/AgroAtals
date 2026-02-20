@@ -12,6 +12,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import unquote
 
 import httpx
 import numpy as np
@@ -19,6 +20,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from dto import (
     ExplainKpiRequest,
@@ -74,14 +76,24 @@ if not DISTRICTS_DIR.exists():
 
 os.environ.setdefault("NUMEXPR_MAX_THREADS", "8")
 
-# Конфиг моделей (только feature_cols для _compute_features)
+# Конфиг моделей (только feature_cols для _compute_features) и метрики модели
 CONFIG_PATH = DEPLOYMENT_DIR / "config.json"
+MODEL_METRICS: dict[str, Any] = {}
 if CONFIG_PATH.exists():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         _config = json.load(f)
-    FEATURE_COLS: list[str] = _config.get("feature_cols", [])
+    FEATURE_COLS = _config.get("feature_cols", [])
+    _metrics = _config.get("metrics") or {}
+    MODEL_METRICS = {
+        "coverage_p90_p10_pct": round(float(_metrics.get("Coverage_Probability_%", 80.0)), 2),
+        "downside_miss_rate_pct": round(float(_metrics.get("Downside_Miss_Rate_%", 16.9)), 2),
+        "mae_p50": round(float(_metrics.get("MAE_p50", 1.35)), 3),
+        "rmse_p50": round(float(_metrics.get("RMSE_p50", 1.60)), 3),
+    }
 else:
     FEATURE_COLS = []
+    MODEL_METRICS = {"coverage_p90_p10_pct": 80.01, "downside_miss_rate_pct": 16.89, "mae_p50": 1.346, "rmse_p50": 1.604}
+BASELINE_YEARS = 8  # спутниковые данные (лет)
 
 # URL микросервисов
 AI_SERVICE_URL = (os.environ.get("AI_SERVICE_URL") or "http://localhost:8001").rstrip("/")
@@ -173,6 +185,73 @@ def _region_to_file_name(region_name: str) -> Optional[str]:
         if k.lower() == key_lower:
             return v
     return None
+
+
+def _geom_centroid(geom: dict) -> Optional[tuple[float, float]]:
+    """GeoJSON geometry -> (lon, lat) centroid (bbox center)."""
+    if not geom or geom.get("type") == "Point":
+        coords = geom.get("coordinates") if geom else None
+        if coords and len(coords) >= 2:
+            return (float(coords[0]), float(coords[1]))
+        return None
+    coords = geom.get("coordinates")
+    if not coords:
+        return None
+    lons, lats = [], []
+    def collect(c: Any) -> None:
+        if isinstance(c, (int, float)):
+            return
+        if isinstance(c, (list, tuple)):
+            if len(c) >= 2 and isinstance(c[0], (int, float)):
+                lons.append(float(c[0]))
+                lats.append(float(c[1]))
+                return
+            for x in c:
+                collect(x)
+    collect(coords)
+    if not lons or not lats:
+        return None
+    return (sum(lons) / len(lons), sum(lats) / len(lats))
+
+
+@lru_cache(maxsize=1)
+def _load_all_district_centroids_cached() -> list[tuple[str, float, float]]:
+    """Список (region_name, lat, lon) по всем районам из GeoJSON в DISTRICTS_DIR."""
+    out: list[tuple[str, float, float]] = []
+    if not DISTRICTS_DIR.exists():
+        return out
+    for path in sorted(DISTRICTS_DIR.glob("*.json")):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.warning("Failed to load %s: %s", path, e)
+            continue
+        for feature in data.get("features", []):
+            props = feature.get("properties", {})
+            name_val = props.get("NAME_2") or props.get("NAME_3") or props.get("NAME_1") or props.get("name")
+            if not name_val:
+                continue
+            geom = feature.get("geometry")
+            cen = _geom_centroid(geom) if geom else None
+            if cen:
+                lon, lat = cen
+                out.append((str(name_val), lat, lon))
+    return out
+
+
+def _nearest_district_name(center_lat: float, center_lng: float) -> Optional[str]:
+    """Имя района (region_name), ближайшего к точке (center_lat, center_lng)."""
+    points = _load_all_district_centroids_cached()
+    if not points:
+        return None
+    best_name, best_d2 = None, float("inf")
+    for name, lat, lon in points:
+        d2 = (lat - center_lat) ** 2 + (lon - center_lng) ** 2
+        if d2 < best_d2:
+            best_d2 = d2
+            best_name = name
+    return best_name
 
 
 @lru_cache(maxsize=64)
@@ -638,15 +717,19 @@ def _chart_subset(country: str, crop: str, area_name: Optional[str], scope: str)
 def _get_chart_data(country: str, crop: str, area_name: Optional[str], scope: str) -> dict[str, Any]:
     subset = _chart_subset(country, crop, area_name, scope)
     if subset.empty:
+        logger.info(
+            "chart-data: no data for country=%r crop=%r scope=%r area_name=%r",
+            country, crop, scope, area_name,
+        )
         return {
             "ndviAnomalyTimeline": [],
-            "riskDistribution": [
-                {"name": "Low Risk", "value": 33, "color": "#10B981"},
-                {"name": "Moderate Risk", "value": 34, "color": "#f59e0b"},
-                {"name": "High Risk", "value": 33, "color": "#ef4444"},
-            ],
+            "riskDistribution": [],
             "precipVsVegetation": [],
         }
+    logger.info(
+        "chart-data: country=%r crop=%r scope=%r area_name=%r -> subset rows=%d",
+        country, crop, scope, area_name, len(subset),
+    )
     ndvi_anomaly_timeline: list[dict[str, Any]] = []
     if "year" in subset.columns:
         if "yield_anomaly_pct" in subset.columns:
@@ -666,14 +749,24 @@ def _get_chart_data(country: str, crop: str, area_name: Optional[str], scope: st
         low = int((counts.str.lower() == "low").sum())
         high = int(counts.str.lower().isin(["high", "moderate_high"]).sum())
         moderate = int(len(subset) - low - high)
-        if low + moderate + high == 0:
-            low, moderate, high = 33, 34, 33
         total = low + moderate + high
-        risk_distribution = [
-            {"name": "Low Risk", "value": round(100 * low / total) if total else 33, "color": "#10B981"},
-            {"name": "Moderate Risk", "value": round(100 * moderate / total) if total else 34, "color": "#f59e0b"},
-            {"name": "High Risk", "value": round(100 * high / total) if total else 33, "color": "#ef4444"},
-        ]
+        if total > 0:
+            risk_distribution = [
+                {"name": "Low Risk", "value": round(100 * low / total), "color": "#10B981"},
+                {"name": "Moderate Risk", "value": round(100 * moderate / total), "color": "#f59e0b"},
+                {"name": "High Risk", "value": round(100 * high / total), "color": "#ef4444"},
+            ]
+    if not risk_distribution and "yield_anomaly_pct" in subset.columns:
+        low = int((subset["yield_anomaly_pct"] > -5).sum())
+        high = int((subset["yield_anomaly_pct"] < -15).sum())
+        moderate = len(subset) - low - high
+        total = low + moderate + high
+        if total > 0:
+            risk_distribution = [
+                {"name": "Low Risk", "value": round(100 * low / total), "color": "#10B981"},
+                {"name": "Moderate Risk", "value": round(100 * moderate / total), "color": "#f59e0b"},
+                {"name": "High Risk", "value": round(100 * high / total), "color": "#ef4444"},
+            ]
     precip_veg: list[dict[str, Any]] = []
     if "year" in subset.columns and "precipitation_total_mm" in subset.columns and "NDVI" in subset.columns:
         by_year = subset.groupby("year", as_index=False).agg(
@@ -1038,6 +1131,169 @@ def dashboard_chart_data(
     except Exception as exc:
         logging.exception("chart-data error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# Ключевые колонки для экспорта исторических данных (~10 штук)
+HISTORICAL_CSV_COLUMNS = [
+    "year",
+    "region_name",
+    "region_id",
+    "crop",
+    "NDVI",
+    "NDVI_anomaly",
+    "precipitation_total_mm",
+    "precipitation_anomaly_mm",
+    "temperature_mean_C",
+    "drought_proxy",
+    "heat_stress_days_proxy",
+    "yield_anomaly_pct",
+]
+
+
+@app.get("/dashboard/historical-csv", response_class=Response)
+def dashboard_historical_csv(
+    country: str = Query("UZB"),
+    crop: str = Query("wheat"),
+    scope: str = Query("country"),
+    area_name: Optional[str] = Query(None),
+    center_lat: Optional[float] = Query(None, description="Latitude of drawn area center; filter by nearest district"),
+    center_lng: Optional[float] = Query(None, description="Longitude of drawn area center"),
+    year_from: Optional[int] = Query(None, description="Start year (inclusive)"),
+    year_to: Optional[int] = Query(None, description="End year (inclusive)"),
+) -> Response:
+    """CSV с историческими данными для выбранного scope. Если заданы center_lat/center_lng — только ближайший район."""
+    subset = df
+    if "country_iso" in subset.columns:
+        subset = subset[subset["country_iso"].astype(str).str.upper() == country.upper()]
+    if "crop" in subset.columns:
+        subset = subset[subset["crop"].astype(str).str.lower() == crop.lower()]
+    if center_lat is not None and center_lng is not None:
+        nearest = _nearest_district_name(center_lat, center_lng)
+        if nearest and "region_name" in subset.columns:
+            subset = subset[subset["region_name"].fillna("").astype(str).map(_normalize_name) == _normalize_name(nearest)]
+        # если nearest is None (нет GeoJSON или пустой список) — не фильтруем, отдаём по стране/культуре
+    elif scope != "country" and area_name:
+        subset = _apply_level_filter_no_year(subset, scope, area_name)
+    if subset.empty:
+        raise HTTPException(status_code=404, detail="No data for the selected scope")
+    if "year" in subset.columns:
+        y_min = int(subset["year"].min())
+        y_max = int(subset["year"].max())
+        y_from = year_from if year_from is not None else y_min
+        y_to = year_to if year_to is not None else y_max
+        subset = subset[(subset["year"] >= y_from) & (subset["year"] <= y_to)]
+    available = [c for c in HISTORICAL_CSV_COLUMNS if c in subset.columns]
+    out_df = subset[available].drop_duplicates().sort_values(by=["year", "region_name"] if "region_name" in available else ["year"])
+    csv_bytes = out_df.to_csv(index=False).encode("utf-8-sig")
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=historical_data.csv"},
+    )
+
+
+@app.get("/dashboard/model-card")
+def dashboard_model_card() -> dict[str, Any]:
+    """Метрики надёжности модели для отчёта: coverage, downside miss rate, MAE/RMSE, baseline years."""
+    return {
+        **MODEL_METRICS,
+        "baseline_years": BASELINE_YEARS,
+    }
+
+
+def _parse_bbox_query(bbox: Optional[str]) -> Optional[list[float]]:
+    """Query bbox: 'minLng,minLat,maxLng,maxLat' -> [min_lon, min_lat, max_lon, max_lat]."""
+    if not bbox:
+        return None
+    parts = [p.strip() for p in bbox.split(",")]
+    if len(parts) != 4:
+        return None
+    try:
+        return [float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3])]
+    except ValueError:
+        return None
+
+
+def _parse_polygon_query(polygon: Optional[str]) -> Optional[list[list[float]]]:
+    """Query polygon: JSON array of [lat,lng]. Decode once in case of double-encoded query param."""
+    if not polygon:
+        return None
+    raw = unquote(polygon)
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    out = []
+    for item in data:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            out.append([float(item[0]), float(item[1])])
+    return out if len(out) >= 3 else None
+
+
+@app.get("/dashboard/satellite/timelapse")
+def dashboard_satellite_timelapse(
+    country: str = Query("UZB"),
+    region_level: str = Query("country"),
+    region_id: Optional[str] = Query(None),
+    crop: str = Query("cotton"),
+    year: int = Query(2024, ge=2017, le=2030),
+    product: str = Query("truecolor"),
+    bbox: Optional[str] = Query(None, description="minLng,minLat,maxLng,maxLat"),
+    polygon: Optional[str] = Query(None, description="JSON array of [lat,lng] points"),
+) -> dict[str, Any]:
+    """Returns { year_used, years: [{year, imageUrl, ...}], baseline: {imageUrl, yearsUsed} }. Credentials in env (CDS_*)."""
+    from satellite import bbox_from_polygon, timelapse_response
+
+    polygon_list = _parse_polygon_query(polygon)
+    bbox_list = _parse_bbox_query(bbox)
+    if polygon_list:
+        bbox_list = bbox_from_polygon(polygon_list)
+    elif bbox_list:
+        pass
+    else:
+        return {
+            "year_used": year,
+            "years": [],
+            "baseline": {"imageUrl": None, "yearsUsed": []},
+            "error": "Provide bbox or polygon",
+        }
+    # timelapse_response expects polygon for bbox_from_polygon; we pass a fake polygon from bbox
+    fake_polygon = [
+        [bbox_list[1], bbox_list[0]],
+        [bbox_list[1], bbox_list[2]],
+        [bbox_list[3], bbox_list[2]],
+        [bbox_list[3], bbox_list[0]],
+    ]
+    return timelapse_response(fake_polygon, country, region_level, region_id, crop, year, product)
+
+
+@app.get("/dashboard/satellite/preview")
+def dashboard_satellite_preview(
+    date_from: str = Query(..., description="YYYY-MM-DD"),
+    date_to: str = Query(..., description="YYYY-MM-DD"),
+    product: str = Query("truecolor"),
+    bbox: Optional[str] = Query(None),
+    polygon: Optional[str] = Query(None),
+) -> dict[str, Any]:
+    """Returns { imageUrl, compositeWindow, source, cloudHint }. Backend uses env credentials only."""
+    from satellite import bbox_from_polygon, preview_response
+
+    polygon_list = _parse_polygon_query(polygon)
+    bbox_list = _parse_bbox_query(bbox)
+    if polygon_list:
+        bbox_list = bbox_from_polygon(polygon_list)
+    elif not bbox_list:
+        raise HTTPException(status_code=400, detail="Provide bbox or polygon")
+    else:
+        polygon_list = [
+            [bbox_list[1], bbox_list[0]],
+            [bbox_list[1], bbox_list[2]],
+            [bbox_list[3], bbox_list[2]],
+            [bbox_list[3], bbox_list[0]],
+        ]
+    return preview_response(polygon_list, date_from, date_to, product)
 
 
 @app.get("/dashboard/metrics")

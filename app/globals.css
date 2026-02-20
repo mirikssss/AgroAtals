@@ -7,11 +7,16 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Layout: design baseline 360px width; no global scaling */
+  --layout-ref-w: 360px;
+  --layout-width: 360px;
+  --layout-height: 800px;
+
   /* ========================================
      UNIFIED DESIGN SYSTEM - AgroRisk
      Primary Brand Color: #10B981 (Emerald-500)
      ======================================== */
-  
+
   /* BRAND COLORS - THE ONLY GREEN */
   --brand: #10B981;
   --brand-hover: #059669;
@@ -115,7 +120,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
+  --font-sans: var(--font-wix-madefor-display), 'Wix Madefor Display', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   
   /* Brand Colors */
@@ -174,15 +179,44 @@
 }
 
 @layer base {
+  html {
+    font-size: clamp(14px, 1.2vw + 2px, 16px);
+  }
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
   }
+  .appShell {
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0);
+    padding-right: env(safe-area-inset-right, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+  }
+  .content {
+    width: 100%;
+    max-width: min(100%, 520px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  @media (width >= 1024px) {
+    .content {
+      max-width: min(100%, 720px);
+    }
+  }
 }
 
-/* Brand Shadow Utility */
+/* Satellite Evidence: scan overlay animation */
+@keyframes scan {
+  0%, 100% { transform: translateY(-100%); opacity: 0.3; }
+  50% { transform: translateY(100%); opacity: 0.6; }
+}
+.animate-satellite-scan {
+  animation: scan 2s ease-in-out infinite;
+}
+
 @layer utilities {
   .shadow-brand {
     box-shadow: 0 4px 14px 0 rgba(var(--brand-rgb), 0.25);
@@ -190,4 +224,5 @@
   .shadow-brand-lg {
     box-shadow: 0 10px 25px -3px rgba(var(--brand-rgb), 0.3);
   }
+  .object-fit-contain { object-fit: contain; }
 }

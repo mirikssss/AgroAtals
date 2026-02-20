@@ -111,7 +111,7 @@ export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: Pr
             )}
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-80 p-0 rounded-xl shadow-lg shadow-black/5 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/40 dark:border-slate-600/40" align="end">
+        <PopoverContent className="w-80 p-0 rounded-xl shadow-lg shadow-black/5 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/40 dark:border-slate-600/40 animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-200" align="end">
           {!showSettings ? (
             <div className="space-y-0">
               {/* User Info Section */}
@@ -155,7 +155,7 @@ export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: Pr
               <div className="p-4 space-y-2">
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-foreground hover:bg-primary/5"
+                  className="w-full justify-start text-foreground hover:bg-primary/5 transition-all duration-200 hover:translate-x-1"
                   onClick={() => setShowSettings(true)}
                 >
                   <Settings className="w-4 h-4 mr-2" />
@@ -163,7 +163,7 @@ export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: Pr
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-destructive hover:bg-destructive/10"
+                  className="w-full justify-start text-destructive hover:bg-destructive/10 transition-all duration-200 hover:translate-x-1"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4 mr-2" />
@@ -232,7 +232,7 @@ export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: Pr
 
       {/* Change Password Modal */}
       <Dialog open={showChangePassword} onOpenChange={setShowChangePassword}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
           <DialogHeader>
             <DialogTitle>{t('changePassword')}</DialogTitle>
           </DialogHeader>
@@ -304,7 +304,7 @@ export function ProfilePopup({ user, onLogout, triggerClassName, showLabel }: Pr
 
       {/* Profile Info Modal */}
       <Dialog open={showProfileInfo} onOpenChange={setShowProfileInfo}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
           <DialogHeader>
             <DialogTitle>{t('profileInformation')}</DialogTitle>
           </DialogHeader>

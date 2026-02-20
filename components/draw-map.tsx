@@ -71,6 +71,8 @@ interface DrawMapProps {
   onAreaDrawn: (area: DrawnArea | null) => void
   initialCenter?: [number, number]
   initialZoom?: number
+  /** Когда true, карта заполняет доступную высоту (для раскладки 60/40). */
+  fillHeight?: boolean
 }
 
 // Point-in-polygon algorithm (ray casting)
@@ -141,7 +143,8 @@ function calculateAreaHectares(coordinates: [number, number][]): number {
 export function DrawMap({ 
   onAreaDrawn, 
   initialCenter = UZBEKISTAN_CENTER, 
-  initialZoom = DEFAULT_ZOOM 
+  initialZoom = DEFAULT_ZOOM,
+  fillHeight = false,
 }: DrawMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -287,6 +290,24 @@ export function DrawMap({
       mapRef.current = null
     }
   }, [leaflet, initialCenter, initialZoom, onAreaDrawn])
+
+  // При fillHeight: пересчитать размер карты при изменении контейнера (flex даёт высоту позже)
+  useEffect(() => {
+    if (!fillHeight || !mapRef.current || !mapContainerRef.current) return
+    const map = mapRef.current
+    const el = mapContainerRef.current
+    const onResize = () => {
+      map.invalidateSize()
+    }
+    const ro = new ResizeObserver(onResize)
+    ro.observe(el)
+    // Один раз после монтирования — layout может прийти с задержкой
+    const t = setTimeout(onResize, 100)
+    return () => {
+      clearTimeout(t)
+      ro.disconnect()
+    }
+  }, [fillHeight, isLoaded])
 
   // Add/remove boundary layers when showBoundaries changes or GeoJSON loads
   useEffect(() => {
@@ -652,10 +673,18 @@ export function DrawMap({
     setMapType(type)
   }, [leaflet])
 
+  const glassCard = 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5'
+
   return (
-    <Card className="overflow-hidden border-border/50">
-      {/* Toolbar */}
-      <div className="bg-white dark:bg-gray-900 border-b border-border/50 p-2 flex items-center gap-2">
+    <Card className={`overflow-hidden ${fillHeight ? 'relative flex-1 min-h-0 h-full w-full border-0 bg-transparent shadow-none' : 'border-border/50'}`}>
+      {/* Toolbar — при fillHeight плавающая стеклянная карточка */}
+      <div
+        className={
+          fillHeight
+            ? `absolute top-4 right-4 z-10 p-2 flex items-center gap-2 flex-wrap max-w-[90vw] ${glassCard}`
+            : 'bg-white dark:bg-gray-900 border-b border-border/50 p-2 flex items-center gap-2'
+        }
+      >
         <div className="flex items-center gap-1 border-r border-border/50 pr-2">
           <Button
             variant={activeTool === 'rectangle' ? 'default' : 'ghost'}
@@ -779,9 +808,15 @@ export function DrawMap({
         )}
       </div>
 
-      {/* Detected Location Banner */}
+      {/* Detected Location Banner — при fillHeight стеклянная карточка */}
       {detectedLocation && (detectedLocation.region || detectedLocation.district) && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-b border-green-200 dark:border-green-800 px-4 py-3">
+        <div
+          className={
+            fillHeight
+              ? `absolute top-4 left-[324px] z-10 px-4 py-3 rounded-2xl ${glassCard} border-green-200/50 dark:border-green-800/50`
+              : 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-b border-green-200 dark:border-green-800 px-4 py-3'
+          }
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900">
@@ -808,11 +843,11 @@ export function DrawMap({
         </div>
       )}
 
-      {/* Map Container */}
-      <div 
-        ref={mapContainerRef} 
-        className="h-[400px] w-full bg-gray-100 dark:bg-gray-800"
-        style={{ minHeight: '400px' }}
+      {/* Map Container — при fillHeight absolute inset-0 (карта на весь экран), иначе в потоке */}
+      <div
+        ref={mapContainerRef}
+        className={`w-full bg-gray-100 dark:bg-gray-800 ${fillHeight ? 'absolute inset-0 z-0' : 'h-[400px]'}`}
+        style={!fillHeight ? { minHeight: '400px' } : undefined}
       >
         {!isLoaded && (
           <div className="h-full w-full flex items-center justify-center">
@@ -821,8 +856,14 @@ export function DrawMap({
         )}
       </div>
 
-      {/* Instructions */}
-      <div className="bg-gray-50 dark:bg-gray-800/50 p-3 text-xs text-muted-foreground border-t border-border/50">
+      {/* Instructions — при fillHeight плавающая стеклянная карточка внизу */}
+      <div
+        className={
+          fillHeight
+            ? `absolute bottom-4 left-4 right-4 z-10 p-3 text-xs text-muted-foreground rounded-2xl ${glassCard}`
+            : 'bg-gray-50 dark:bg-gray-800/50 p-3 text-xs text-muted-foreground border-t border-border/50'
+        }
+      >
         <div className="flex items-center gap-4 flex-wrap">
           <span><kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px]">□</kbd> Draw rectangle</span>
           <span><kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px]">⬠</kbd> Draw polygon</span>

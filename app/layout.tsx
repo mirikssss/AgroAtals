@@ -1,10 +1,11 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Wix_Madefor_Display, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { LayoutScaleProvider } from '@/components/layout-scale-provider'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
+const wixMadeforDisplay = Wix_Madefor_Display({ subsets: ["latin", "cyrillic"], variable: "--font-wix-madefor-display" })
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
@@ -44,9 +45,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased`}>
-        {children}
+    <html lang="en" className={wixMadeforDisplay.variable}>
+      <body className="font-sans antialiased appShell">
+        <LayoutScaleProvider>
+          {children}
+        </LayoutScaleProvider>
         <Analytics />
       </body>
     </html>

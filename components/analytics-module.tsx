@@ -18,8 +18,6 @@ import {
   Line,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
   Cell,
   ComposedChart,
   Area,
@@ -46,26 +44,39 @@ import {
   BarChart3,
   ArrowRight,
   MapPin,
+  Download,
 } from 'lucide-react'
 import { useLanguage } from '@/lib/language-context'
-import { mockDistrictData } from '@/data/regions-data'
 import { 
   useAIRecommendation, 
   AIRecommendationTrigger, 
   AIRecommendationContent 
 } from '@/components/inline-ai-recommendation'
-import type { RegionData } from '@/lib/gemini'
+import type { RegionData, GeminiResponse } from '@/lib/gemini'
 import type { DrawnArea } from '@/components/draw-map'
 import { addField } from '@/lib/fields-db'
+import { useAuth } from '@/lib/auth-context'
+import { SatelliteEvidence } from '@/components/satellite-evidence'
+import { useLayoutScale } from '@/lib/layout-scale'
 
-// Dynamic import for DrawMap (client-side only)
-const DrawMap = dynamic(() => import('@/components/draw-map'), { 
-  ssr: false,
-  loading: () => (
-    <div className="h-[400px] w-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#10B981]"></div>
+function DrawMapLoadingPlaceholder() {
+  const { sy, s } = useLayoutScale()
+  return (
+    <div
+      className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center"
+      style={{ height: sy(400) }}
+    >
+      <div
+        className="animate-spin rounded-full border-b-2 border-[#10B981]"
+        style={{ width: s(32), height: s(32) }}
+      />
     </div>
   )
+}
+
+const DrawMap = dynamic(() => import('@/components/draw-map'), {
+  ssr: false,
+  loading: () => <DrawMapLoadingPlaceholder />,
 })
 
 // Types
@@ -111,13 +122,26 @@ interface ChartDataState {
   precipVsVegetation: Array<{ year: number; precipitation: number; ndvi: number }>
 }
 
-const defaultChartData: ChartDataState = {
+// Model reliability (from API /dashboard/model-card)
+interface ModelCard {
+  coverage_p90_p10_pct: number
+  downside_miss_rate_pct: number
+  mae_p50: number
+  rmse_p50: number
+  baseline_years: number
+}
+
+const DEFAULT_MODEL_CARD: ModelCard = {
+  coverage_p90_p10_pct: 80.01,
+  downside_miss_rate_pct: 16.89,
+  mae_p50: 1.35,
+  rmse_p50: 1.6,
+  baseline_years: 8,
+}
+
+const emptyChartData: ChartDataState = {
   ndviAnomalyTimeline: [],
-  riskDistribution: [
-    { name: 'Low Risk', value: 33, color: '#10B981' },
-    { name: 'Moderate Risk', value: 34, color: '#f59e0b' },
-    { name: 'High Risk', value: 33, color: '#ef4444' },
-  ],
+  riskDistribution: [],
   precipVsVegetation: [],
 }
 
@@ -332,8 +356,8 @@ export function AnalyticsModule({ onFieldAdded }: AnalyticsModuleProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Phase 1: Input Form */}
+    <div className={phase === 'input' ? 'h-full min-h-0 flex flex-col' : 'space-y-6'}>
+      {/* Phase 1: Input Form — раскладка как у дашборда: 40% форма, 60% карта */}
       {phase === 'input' && (
         <InputPhase
           loanParams={loanParams}
@@ -375,159 +399,126 @@ interface InputPhaseProps {
   analysisError?: string | null
 }
 
+const glassCard =
+  'bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5'
+
 function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysisError }: InputPhaseProps) {
   const { t } = useLanguage()
   const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold text-foreground">{t('creditRiskAnalytics')}</h2>
-        <p className="text-muted-foreground">
-          {t('enterLoanParamsDraw')}
-        </p>
+    <div className="h-full min-h-0 flex flex-col relative">
+      {/* Карта на весь экран: обёртка flex, чтобы DrawMap (flex-1) получил высоту */}
+      <div className="absolute inset-0 flex flex-col min-h-0">
+        <DrawMap onAreaDrawn={onAreaDrawn} fillHeight />
       </div>
 
-      {/* Loan Parameters Card */}
-      <Card className="p-6 border-border/50 shadow-sm">
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-4 border-b border-border/50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-primary font-semibold text-sm">1</span>
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">{t('loanParameters')}</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                {t('loanAmount')}
-              </label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={loanParams.loanAmount}
-                onChange={(e) => onInputChange('loanAmount', e.target.value)}
-                placeholder="e.g. 45000 or 45K"
-                className="bg-input/50 border-border"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                {t('interestRate')}
-              </label>
-              <Input
-                type="number"
-                step="0.1"
-                value={loanParams.interestRate}
-                onChange={(e) => onInputChange('interestRate', e.target.value)}
-                placeholder="12"
-                className="bg-input/50 border-border"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                {t('termYears')}
-              </label>
-              <Input
-                type="number"
-                value={loanParams.termYears}
-                onChange={(e) => onInputChange('termYears', e.target.value)}
-                placeholder="5"
-                className="bg-input/50 border-border"
-              />
-            </div>
-          </div>
+      {/* Форма — плавающая стеклянная карточка слева, компактная фиксированная ширина */}
+      <aside
+        className={`absolute left-4 top-4 z-10 w-[300px] max-w-[calc(100vw-2rem)] ${glassCard} p-4 flex flex-col gap-4`}
+      >
+        <div>
+          <h2 className="text-lg font-bold text-foreground">{t('creditRiskAnalytics')}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{t('enterLoanParamsDraw')}</p>
         </div>
-      </Card>
 
-      {/* Map Drawing Card */}
-      <Card className="p-6 border-border/50 shadow-sm">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-semibold text-sm">2</span>
+        {/* Две секции одной высоты через grid */}
+        <div className="grid grid-cols-1 grid-rows-[1fr_1fr] gap-4 min-h-[176px]">
+          <div className="space-y-2 min-h-0 flex flex-col">
+            <p className="text-xs font-semibold text-foreground">{t('loanParameters')}</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col min-h-[52px]">
+                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('loanAmount')}</label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={loanParams.loanAmount}
+                  onChange={(e) => onInputChange('loanAmount', e.target.value)}
+                  placeholder="45K"
+                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+                />
               </div>
-              <h3 className="text-lg font-semibold text-foreground">{t('drawAgriculturalArea')}</h3>
+              <div className="flex flex-col min-h-[52px]">
+                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('interestRate')}</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={loanParams.interestRate}
+                  onChange={(e) => onInputChange('interestRate', e.target.value)}
+                  placeholder="12"
+                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+                />
+              </div>
+              <div className="flex flex-col min-h-[52px]">
+                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('termYears')}</label>
+                <Input
+                  type="number"
+                  value={loanParams.termYears}
+                  onChange={(e) => onInputChange('termYears', e.target.value)}
+                  placeholder="5"
+                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+                />
+              </div>
             </div>
-            {loanParams.drawnArea && (
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin className="w-4 h-4 text-[#10B981]" />
-                <span className="text-muted-foreground">
-                  {loanParams.drawnArea.bounds && (
-                    <>
-                      {((loanParams.drawnArea.bounds.north + loanParams.drawnArea.bounds.south) / 2).toFixed(4)}°N, {' '}
-                      {((loanParams.drawnArea.bounds.east + loanParams.drawnArea.bounds.west) / 2).toFixed(4)}°E
-                    </>
-                  )}
+          </div>
+
+          <div className="space-y-2 min-h-0 flex flex-col">
+            <p className="text-xs font-semibold text-foreground">{t('drawAgriculturalArea')}</p>
+            {loanParams.drawnArea?.bounds && (
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <MapPin className="w-3 h-3 text-[#10B981]" />
+                <span>
+                  {((loanParams.drawnArea.bounds.north + loanParams.drawnArea.bounds.south) / 2).toFixed(4)}°N,{' '}
+                  {((loanParams.drawnArea.bounds.east + loanParams.drawnArea.bounds.west) / 2).toFixed(4)}°E
                 </span>
               </div>
             )}
-          </div>
-
-          {/* Map */}
-          <DrawMap onAreaDrawn={onAreaDrawn} />
-
-          {/* Crop Type and Area */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border/50">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                {t('cropType')}
-              </label>
-              <Select value={loanParams.crop} onValueChange={(v) => onInputChange('crop', v)}>
-                <SelectTrigger className="bg-input/50 border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="cotton">{t('cropCotton')}</SelectItem>
-                  <SelectItem value="wheat">{t('cropWheat')}</SelectItem>
-                  <SelectItem value="rice">{t('cropRice')}</SelectItem>
-                  <SelectItem value="corn">{t('cropCorn')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                {t('areaHectares')}
-                {loanParams.drawnArea && (
-                  <span className="text-xs text-muted-foreground ml-2">
-                    (auto-calculated from drawing)
-                  </span>
-                )}
-              </label>
-              <Input
-                type="number"
-                value={loanParams.hectares}
-                onChange={(e) => onInputChange('hectares', e.target.value)}
-                placeholder="150"
-                className="bg-input/50 border-border"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('cropType')}</label>
+                <Select value={loanParams.crop} onValueChange={(v) => onInputChange('crop', v)}>
+                  <SelectTrigger className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    <SelectItem value="cotton">{t('cropCotton')}</SelectItem>
+                    <SelectItem value="wheat">{t('cropWheat')}</SelectItem>
+                    <SelectItem value="rice">{t('cropRice')}</SelectItem>
+                    <SelectItem value="corn">{t('cropCorn')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('areaHectares')}</label>
+                <Input
+                  type="number"
+                  value={loanParams.hectares}
+                  onChange={(e) => onInputChange('hectares', e.target.value)}
+                  placeholder="150"
+                  className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </Card>
 
-      {/* API error message */}
-      {analysisError && (
-        <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
-          <strong>{t('analysisUnavailable')}</strong>
-          <p className="mt-1">{analysisError}</p>
-        </div>
-      )}
+        {analysisError && (
+          <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50/80 dark:bg-red-950/40 p-2 text-[10px] text-red-800 dark:text-red-200">
+            <strong>{t('analysisUnavailable')}</strong>
+            <p className="mt-0.5">{analysisError}</p>
+          </div>
+        )}
 
-      {/* Analyze Button */}
-      <Button
-        onClick={onAnalyze}
-        disabled={!isFormValid}
-        className="w-full py-6 text-lg font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all"
-      >
-        <Satellite className="w-5 h-5 mr-2" />
-        {t('runAnalysis')}
-        <ArrowRight className="w-5 h-5 ml-2" />
-      </Button>
+        <Button
+          onClick={onAnalyze}
+          disabled={!isFormValid}
+          className="w-full py-3 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          <Satellite className="w-3.5 h-3.5 mr-1.5" />
+          {t('runAnalysis')}
+          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+        </Button>
+      </aside>
     </div>
   )
 }
@@ -540,11 +531,15 @@ interface AnalyzingPhaseProps {
 
 function AnalyzingPhase({ currentStep, steps }: AnalyzingPhaseProps) {
   const { t } = useLanguage()
+  const { s, sx, sy } = useLayoutScale()
   return (
-    <div className="max-w-2xl mx-auto space-y-8 py-12">
+    <div className="mx-auto space-y-8" style={{ maxWidth: sx(672), paddingTop: sy(48), paddingBottom: sy(48) }}>
       <div className="text-center space-y-4">
-        <div className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-          <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <div
+          className="mx-auto rounded-full bg-primary/10 flex items-center justify-center"
+          style={{ width: s(80), height: s(80) }}
+        >
+          <Loader2 className="text-primary animate-spin" style={{ width: s(40), height: s(40) }} />
         </div>
         <h2 className="text-2xl font-bold text-foreground">{t('analyzingRisk')}</h2>
         <p className="text-muted-foreground">
@@ -610,6 +605,257 @@ function AnalyzingPhase({ currentStep, steps }: AnalyzingPhaseProps) {
   )
 }
 
+/** Драйверы риска из результата (прокси по имеющимся метрикам). */
+function getResultDrivers(result: AnalysisResult): { label: string; value: string }[] {
+  const drought = result.htcIndex < 0.7 ? 'Повышенное' : 'Норма'
+  const ndviDrop = result.yieldAnomaly < -2 ? 'Да (снижение вегетации)' : 'Нет'
+  const heat = result.trendDynamics === 'Declining' ? 'Умеренный стресс' : result.trendDynamics === 'Stable' ? 'Норма' : 'Низкий'
+  return [
+    { label: 'NDVI drop', value: ndviDrop },
+    { label: 'Drought pressure', value: drought },
+    { label: 'Heat stress', value: heat },
+  ]
+}
+
+/** Убрать HTML-теги и лишние пробелы для текста в PDF */
+function stripHtmlForPdf(html: string): string {
+  if (!html || typeof html !== 'string') return ''
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Драйверы для PDF — только латиница (jsPDF без кириллического шрифта). */
+function getResultDriversForPdf(result: AnalysisResult): { label: string; value: string }[] {
+  const drought = result.htcIndex < 0.7 ? 'Elevated' : 'Normal'
+  const ndviDrop = result.yieldAnomaly < -2 ? 'Yes (vegetation decline)' : 'No'
+  const heat = result.trendDynamics === 'Declining' ? 'Moderate stress' : result.trendDynamics === 'Stable' ? 'Normal' : 'Low'
+  return [
+    { label: 'NDVI drop', value: ndviDrop },
+    { label: 'Drought pressure', value: drought },
+    { label: 'Heat stress', value: heat },
+  ]
+}
+
+/** Оставить в строке только символы, поддерживаемые стандартным шрифтом jsPDF (ASCII + базовая латиница). Кириллицу заменяем на транслит или убираем. */
+function pdfSafeText(s: string): string {
+  if (!s || typeof s !== 'string') return ''
+  const cyr: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e', 'ж': 'zh', 'з': 'z',
+    'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r',
+    'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'E', 'Ж': 'Zh', 'З': 'Z',
+    'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R',
+    'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
+    'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+  }
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (cyr[c] !== undefined) out += cyr[c]
+    else if (c.charCodeAt(0) <= 255 || /[\w\s.,;:!?\-–—()%°]/.test(c)) out += c
+    else out += ' '
+  }
+  return out.replace(/\s+/g, ' ').trim()
+}
+
+/** Цвета бренда для PDF (RGB 0–255). */
+const PDF_COLORS = {
+  primary: [16, 185, 129] as [number, number, number],       // #10B981
+  primaryLight: [209, 250, 229] as [number, number, number], // #D1FAE5
+  border: [229, 231, 235] as [number, number, number],       // #E5E7EB
+  textMuted: [107, 114, 128] as [number, number, number],     // #6B7280
+  white: [255, 255, 255] as [number, number, number],
+}
+
+/** Скачать отчёт сразу в PDF. Оформление: шапка, таблицы, разделители, фирменные цвета. */
+async function downloadReportPdf(
+  result: AnalysisResult,
+  modelCard: ModelCard,
+  opts: { userName: string; centerLat: string; centerLng: string; crop: string },
+  recommendation: GeminiResponse | null
+) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF()
+  const riskLabel = result.riskCategory === 'LOW' ? 'Low' : result.riskCategory === 'MODERATE' ? 'Moderate' : 'High'
+  const drivers = getResultDriversForPdf(result)
+  const safe = (s: string) => String(s).replace(/[^\w.-]/g, '_').replace(/_+/g, '_').slice(0, 40) || 'user'
+  const dt = new Date()
+  const datePart = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${String(dt.getHours()).padStart(2, '0')}-${String(dt.getMinutes()).padStart(2, '0')}`
+  const filename = `${safe(opts.userName)}_${opts.centerLat}_${opts.centerLng}_${safe(opts.crop)}_${datePart}.pdf`
+
+  const pageW = doc.internal.pageSize.getWidth()
+  const margin = 14
+  const contentW = pageW - margin * 2
+  let y = 10
+
+  const setTextColor = (r: number, g: number, b: number) => doc.setTextColor(r, g, b)
+
+  /** Горизонтальная линия-разделитель. */
+  const divider = () => {
+    y += 3
+    doc.setDrawColor(...PDF_COLORS.border)
+    doc.setLineWidth(0.3)
+    doc.line(margin, y, pageW - margin, y)
+    y += 5
+  }
+
+  /** Заголовок секции с цветной полоской слева. */
+  const sectionTitle = (title: string) => {
+    y += 2
+    doc.setFillColor(...PDF_COLORS.primary)
+    doc.rect(margin, y - 3.5, 3, 5, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    setTextColor(17, 24, 39) // gray-900
+    doc.text(title, margin + 5, y)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    setTextColor(0, 0, 0)
+    y += 7
+  }
+
+  /** Одна строка текста. */
+  const line = (text: string, indent = 0) => {
+    doc.text(text, margin + indent, y)
+    y += 6
+  }
+
+  /** Текст блоком с переносами. */
+  const block = (text: string, maxWidth = contentW - 10) => {
+    const safeStr = pdfSafeText(text)
+    const lines = doc.splitTextToSize(safeStr, maxWidth)
+    lines.forEach((l: string) => {
+      doc.text(l, margin, y)
+      y += 5
+    })
+    y += 2
+  }
+
+  /** Простая таблица: массив строк [label, value]. */
+  const table = (rows: [string, string][], headerBg = false) => {
+    const col1W = contentW * 0.45
+    const rowH = 7
+    if (headerBg) {
+      doc.setFillColor(...PDF_COLORS.primaryLight)
+      doc.rect(margin, y - 4, contentW, rowH, 'F')
+      doc.setFont('helvetica', 'bold')
+      setTextColor(0, 0, 0)
+    }
+    doc.setDrawColor(...PDF_COLORS.border)
+    doc.setLineWidth(0.2)
+    rows.forEach(([label, value], i) => {
+      if (i > 0 && headerBg) {
+        doc.setFillColor(250, 250, 250)
+        doc.rect(margin, y - 4, contentW, rowH, 'F')
+      }
+      doc.rect(margin, y - 4, contentW, rowH, 'S')
+      doc.rect(margin, y - 4, col1W, rowH, 'S')
+      doc.setFont('helvetica', headerBg && i === 0 ? 'bold' : 'normal')
+      doc.setFontSize(9)
+      doc.text(label, margin + 3, y + 1)
+      doc.text(value, margin + col1W + 3, y + 1)
+      y += rowH
+    })
+    doc.setFont('helvetica', 'normal')
+    y += 4
+  }
+
+  // ——— Шапка ———
+  doc.setFillColor(...PDF_COLORS.primary)
+  doc.rect(0, 0, pageW, 20, 'F')
+  doc.setTextColor(...PDF_COLORS.white)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text('AgroRisk', margin, 10)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Credit Risk Assessment  |  ${dt.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}`, margin, 16)
+  setTextColor(0, 0, 0)
+  y = 26
+
+  // ——— Borrower / Field scope ———
+  sectionTitle('Borrower / Field scope')
+  table([
+    ['District / Region', `${pdfSafeText(result.district)}  |  ${pdfSafeText(result.region)}`],
+    ['Asset / Season', `${result.assetName.split(' ')[0] || '-'}  |  Season ${dt.getFullYear()}`],
+    ['Yield (P50)', `${result.predictedYield.toFixed(2)} t/ha`],
+  ], true)
+
+  divider()
+
+  // ——— Risk scenarios ———
+  sectionTitle('Risk scenarios (yield anomaly, %)')
+  table([
+    ['Downside P10', `${result.p10.toFixed(1)}%`],
+    ['Expected P50', `${result.p50.toFixed(1)}%`],
+    ['Upside P90', `${result.p90.toFixed(1)}%`],
+    ['DSCR', `${result.dscr.toFixed(2)}x`],
+    ['Risk category', riskLabel],
+  ], true)
+
+  divider()
+
+  // ——— Drivers ———
+  sectionTitle('Drivers')
+  table(drivers.map((d) => [d.label, d.value]), true)
+
+  divider()
+
+  // ——— Recommendation (AI) ———
+  sectionTitle('Recommendation (AI)')
+  if (recommendation) {
+    const parts: string[] = []
+    if (recommendation.riskAssessment) parts.push(`Risk: ${stripHtmlForPdf(recommendation.riskAssessment)}`)
+    if (recommendation.immediateActions) parts.push(`Actions: ${stripHtmlForPdf(recommendation.immediateActions)}`)
+    if (recommendation.seasonalOutlook) parts.push(`Outlook: ${stripHtmlForPdf(recommendation.seasonalOutlook)}`)
+    if (recommendation.resourceOptimization) parts.push(`Resources: ${stripHtmlForPdf(recommendation.resourceOptimization)}`)
+    if (parts.length > 0) {
+      parts.forEach((p) => block(p))
+    } else if (recommendation.raw) {
+      block(stripHtmlForPdf(recommendation.raw))
+    }
+  } else {
+    block('Open the AI Recommendations block on the page and click Download report again for full text.')
+    ;(result.aiTips?.length ? result.aiTips : []).forEach((t) => line(`- ${pdfSafeText(t)}`, 4))
+  }
+  y += 2
+
+  divider()
+
+  // ——— Confidence ———
+  sectionTitle('Confidence  |  Model reliability')
+  table([
+    ['Coverage P10-P90', `${modelCard.coverage_p90_p10_pct}%`],
+    ['Downside Miss Rate', `${modelCard.downside_miss_rate_pct}%`],
+    ['MAE (P50)', String(modelCard.mae_p50)],
+    ['RMSE (P50)', String(modelCard.rmse_p50)],
+  ], true)
+
+  divider()
+
+  // ——— Evidence ———
+  sectionTitle('Evidence')
+  const evidenceText = `Baseline: ${modelCard.baseline_years} years of satellite data (NDVI, precipitation, temperature).`
+  const boxH = 10
+  doc.setFillColor(...PDF_COLORS.primaryLight)
+  doc.setDrawColor(...PDF_COLORS.border)
+  doc.setLineWidth(0.2)
+  doc.rect(margin, y, contentW, boxH, 'FD')
+  doc.text(evidenceText, margin + 4, y + 6)
+  y += boxH + 4
+
+  doc.save(filename)
+}
+
+function escapeHtml(s: string): string {
+  const el = document.createElement('div')
+  el.textContent = s
+  return el.innerHTML
+}
+
 // Phase 3: Results Component
 interface ResultsPhaseProps {
   result: AnalysisResult
@@ -621,21 +867,44 @@ interface ResultsPhaseProps {
 
 function ResultsPhase({ result, onReset, language, loanParams, onAddField }: ResultsPhaseProps) {
   const { t } = useLanguage()
-  const [chartData, setChartData] = useState<ChartDataState>(defaultChartData)
+  const { user } = useAuth()
+  const [chartData, setChartData] = useState<ChartDataState>(emptyChartData)
   const [fieldAdded, setFieldAdded] = useState(false)
+  const [modelCard, setModelCard] = useState<ModelCard>(DEFAULT_MODEL_CARD)
+  const userName = user?.name || user?.email?.split('@')[0] || 'user'
+  const bounds = loanParams?.drawnArea?.bounds
+  const centerLat = bounds ? ((bounds.north + bounds.south) / 2).toFixed(4) : '0'
+  const centerLng = bounds ? ((bounds.east + bounds.west) / 2).toFixed(4) : '0'
+  const crop = (result.assetName?.split(' ')[0] || 'cotton').toLowerCase()
 
-  // Fetch chart data from API (dataset-based) when result is available
+  // Графики по реальным данным для текущего анализа: район/регион + культура
   useEffect(() => {
     const crop = (result.assetName?.split(' ')[0] || 'cotton').toLowerCase()
     const url = new URL('/dashboard/chart-data', DASHBOARD_API_URL)
     url.searchParams.set('country', 'UZB')
     url.searchParams.set('crop', crop)
-    url.searchParams.set('scope', 'country')
+    if (result.district?.trim()) {
+      url.searchParams.set('scope', 'district')
+      url.searchParams.set('area_name', result.district.trim())
+    } else if (result.region?.trim()) {
+      url.searchParams.set('scope', 'region')
+      url.searchParams.set('area_name', result.region.trim())
+    } else {
+      url.searchParams.set('scope', 'country')
+    }
     fetch(url.toString())
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Chart data failed'))))
       .then((data: ChartDataState) => setChartData(data))
-      .catch(() => setChartData(defaultChartData))
-  }, [result.assetName])
+      .catch(() => setChartData(emptyChartData))
+  }, [result.assetName, result.district, result.region])
+
+  // Fetch model card (coverage, downside miss rate, MAE/RMSE, baseline years)
+  useEffect(() => {
+    fetch(`${DASHBOARD_API_URL}/dashboard/model-card`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: ModelCard) => setModelCard(data))
+      .catch(() => {})
+  }, [])
 
   // Prepare data for AI Recommendation
   const aiRegionData: Partial<RegionData> = {
@@ -663,6 +932,22 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
 
   // AI Recommendation state (pass language so Gemini responds in selected language)
   const aiRecommendation = useAIRecommendation(aiRegionData, language)
+  const anomalyValues = chartData.ndviAnomalyTimeline
+    .map((p) => Number(p.anomaly))
+    .filter((v) => Number.isFinite(v))
+  const anomalyMin = anomalyValues.length ? Math.min(...anomalyValues) : -10
+  const anomalyMax = anomalyValues.length ? Math.max(...anomalyValues) : 10
+  const anomalySpan = Math.max(1, anomalyMax - anomalyMin)
+  const anomalyPad = Math.max(2, anomalySpan * 0.2)
+  const anomalyDomain: [number, number] = [
+    Math.floor(Math.min(0, anomalyMin) - anomalyPad),
+    Math.ceil(Math.max(0, anomalyMax) + anomalyPad),
+  ]
+  const scenarioBandData = [
+    { name: 'P10', value: result.p10, color: '#ef4444' },
+    { name: 'P50', value: result.p50, color: '#f59e0b' },
+    { name: 'P90', value: result.p90, color: '#10B981' },
+  ]
 
   return (
     <div className="space-y-6">
@@ -688,6 +973,41 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
               {t('fieldRisk')}: {result.riskCategory === 'LOW' ? t('lowRisk') : result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
             </Badge>
             
+            <Button
+              variant="outline"
+              onClick={() => downloadReportPdf(result, modelCard, { userName, centerLat, centerLng, crop }, aiRecommendation.recommendation)}
+              className="h-10 px-5 gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {t('downloadReportPdf')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const url = new URL(`${DASHBOARD_API_URL}/dashboard/historical-csv`)
+                url.searchParams.set('country', 'UZB')
+                url.searchParams.set('crop', crop)
+                url.searchParams.set('scope', 'country')
+                if (bounds) {
+                  url.searchParams.set('center_lat', centerLat)
+                  url.searchParams.set('center_lng', centerLng)
+                }
+                fetch(url.toString())
+                  .then((res) => (res.ok ? res.blob() : Promise.reject(new Error('CSV failed'))))
+                  .then((blob) => {
+                    const a = document.createElement('a')
+                    a.href = URL.createObjectURL(blob)
+                    a.download = 'historical_data.csv'
+                    a.click()
+                    URL.revokeObjectURL(a.href)
+                  })
+                  .catch(() => {})
+              }}
+              className="h-10 px-5 gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {t('downloadHistoricalData')}
+            </Button>
             <Button variant="outline" onClick={onReset} className="h-10 px-5">
               {t('newAnalysis')}
             </Button>
@@ -716,9 +1036,9 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
 
       {/* DSCR Summary Card */}
       <Card className="p-4 bg-gradient-to-r from-primary/5 to-primary/0 border-primary/20">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-center px-4 border-r border-border/50">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-stretch gap-2 sm:gap-4">
+            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">DSCR</p>
               <p className={`text-2xl font-bold ${
                 result.dscr >= 1.25 ? 'text-[#10B981]' : result.dscr >= 1.0 ? 'text-orange-600' : 'text-red-600'
@@ -726,16 +1046,16 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
                 {result.dscr.toFixed(2)}x
               </p>
             </div>
-            <div className="text-center px-4 border-r border-border/50">
+            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
               <p className="text-xl font-semibold text-foreground">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
-            <div className="text-center px-4">
+            <div className="text-center px-3 sm:px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
               <p className="text-xl font-semibold text-foreground">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
-          <div className={`px-4 py-2 rounded-lg ${
+          <div className={`px-4 py-2 rounded-lg w-full sm:w-auto ${
             result.dscr >= 1.25
               ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300'
               : result.dscr >= 1.0
@@ -750,8 +1070,53 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
         </div>
       </Card>
 
+      {/* Evidence: p10/p50/p90, drivers, confidence, baseline */}
+      <Card className="p-4 border-border/50">
+        <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Evidence</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Risk scenarios (аномалия урожая, %)</p>
+            <div className="flex gap-4">
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase">Downside</p>
+                <p className="text-lg font-bold text-foreground">P10 {result.p10.toFixed(1)}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase">Expected</p>
+                <p className="text-lg font-bold text-foreground">P50 {result.p50.toFixed(1)}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase">Upside</p>
+                <p className="text-lg font-bold text-foreground">P90 {result.p90.toFixed(1)}%</p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Ключевые драйверы</p>
+            <ul className="text-sm text-foreground space-y-0.5">
+              {getResultDrivers(result).map((d) => (
+                <li key={d.label}><span className="font-medium">{d.label}:</span> {d.value}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Model reliability</p>
+            <p className="text-xs text-foreground">
+              Coverage P10–P90 = <strong>{modelCard.coverage_p90_p10_pct}%</strong>
+              <br />
+              Downside Miss Rate = <strong>{modelCard.downside_miss_rate_pct}%</strong>
+              <br />
+              <span className="text-muted-foreground">MAE (P50) {modelCard.mae_p50} · RMSE {modelCard.rmse_p50}</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Evidence: <strong>{modelCard.baseline_years} лет</strong> спутниковых данных
+            </p>
+          </div>
+        </div>
+      </Card>
+
       {/* 3x3 Metrics Grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* Row 1 */}
         <MetricCard
           title={t('predictedYield')}
@@ -812,30 +1177,42 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
               <p className="text-xs text-muted-foreground">{t('detectionOfDroughtEvents')}</p>
             </div>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData.ndviAnomalyTimeline.length ? chartData.ndviAnomalyTimeline : [{ year: new Date().getFullYear(), anomaly: 0, baseline: 0 }]} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" domain={[-25, 10]} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
-                  <ReferenceArea y1={-10} y2={-25} fill="#ef4444" fillOpacity={0.1} />
-                  <Line
-                    type="monotone"
-                    dataKey="anomaly"
-                    stroke="var(--primary)"
-                    strokeWidth={2}
-                    dot={{ fill: 'var(--primary)', r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+              {chartData.ndviAnomalyTimeline.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData.ndviAnomalyTimeline} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      stroke="var(--muted-foreground)"
+                      domain={anomalyDomain}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`${Number(value).toFixed(1)}%`, t('yieldAnomaly')]}
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                    <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
+                    <ReferenceArea y1={-10} y2={-25} fill="#ef4444" fillOpacity={0.1} />
+                    <Line
+                      type="monotone"
+                      dataKey="anomaly"
+                      stroke="var(--primary)"
+                      strokeWidth={2}
+                      dot={{ fill: 'var(--primary)', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  {t('noData') || 'No data'}
+                </div>
+              )}
             </div>
             <p className="text-xs text-muted-foreground italic">
               {t('redZoneIndicates')}
@@ -843,47 +1220,44 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
           </div>
         </Card>
 
-        {/* Chart 2: Risk Distribution Donut */}
+        {/* Chart 2: Banking stress scenarios (P10/P50/P90) */}
         <Card className="p-4 lg:col-span-1">
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold text-foreground">{t('riskDistribution')}</h3>
-              <p className="text-xs text-muted-foreground">{t('districtLevelContext')}</p>
+              <h3 className="font-semibold text-foreground">{t('yieldScenarioBand')}</h3>
+              <p className="text-xs text-muted-foreground">{t('bankingScenarioSubtitle')}</p>
             </div>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData.riskDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {chartData.riskDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number) => [`${value}%`, 'Fields']}
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    formatter={(value) => <span className="text-xs">{value}</span>}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {scenarioBandData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={scenarioBandData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                    <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+                    <Tooltip
+                      formatter={(value: number) => [`${Number(value).toFixed(1)}%`, t('yieldAnomaly')]}
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                    <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="5 5" />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {scenarioBandData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  {t('noData') || 'No data'}
+                </div>
+              )}
             </div>
             <p className="text-xs text-muted-foreground italic">
-              {t('regionalPattern')}
+              {t('scenarioBandFootnote')}
             </p>
           </div>
         </Card>
@@ -896,50 +1270,56 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
               <p className="text-xs text-muted-foreground">{t('multiModalValidation')}</p>
             </div>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData.precipVsVegetation.length ? chartData.precipVsVegetation : [{ year: new Date().getFullYear(), precipitation: 0, ndvi: 0 }]} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                  <YAxis 
-                    yAxisId="left" 
-                    tick={{ fontSize: 11 }} 
-                    stroke="#3b82f6"
-                    domain={[0, 500]}
-                  />
-                  <YAxis 
-                    yAxisId="right" 
-                    orientation="right" 
-                    tick={{ fontSize: 11 }} 
-                    stroke="#10B981"
-                    domain={[0, 1]}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
-                  <Bar 
-                    yAxisId="left" 
-                    dataKey="precipitation" 
-                    fill="#3b82f6" 
-                    name="Precipitation (mm)" 
-                    radius={[4, 4, 0, 0]}
-                    fillOpacity={0.7}
-                  />
-                  <Line 
-                    yAxisId="right" 
-                    type="monotone" 
-                    dataKey="ndvi" 
-                    stroke="#10B981" 
-                    name="NDVI Index"
-                    strokeWidth={2}
-                    dot={{ fill: '#10B981', r: 3 }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+              {chartData.precipVsVegetation.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData.precipVsVegetation} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                    <YAxis 
+                      yAxisId="left" 
+                      tick={{ fontSize: 11 }} 
+                      stroke="#3b82f6"
+                      domain={[0, 500]}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right" 
+                      tick={{ fontSize: 11 }} 
+                      stroke="#10B981"
+                      domain={[0, 1]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                    <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
+                    <Bar 
+                      yAxisId="left" 
+                      dataKey="precipitation" 
+                      fill="#3b82f6" 
+                      name="Precipitation (mm)" 
+                      radius={[4, 4, 0, 0]}
+                      fillOpacity={0.7}
+                    />
+                    <Line 
+                      yAxisId="right" 
+                      type="monotone" 
+                      dataKey="ndvi" 
+                      stroke="#10B981" 
+                      name="NDVI Index"
+                      strokeWidth={2}
+                      dot={{ fill: '#10B981', r: 3 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  {t('noData') || 'No data'}
+                </div>
+              )}
             </div>
             <p className="text-xs text-muted-foreground italic">
               {t('rainVegetationCorrelation')}
@@ -997,6 +1377,17 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
       )}
       {fieldAdded && (
         <p className="text-sm text-[#10B981] font-medium pt-2">{t('fieldAddedToTracking')}</p>
+      )}
+
+      {/* Satellite Evidence (moved to the end for jury flow) */}
+      {loanParams?.drawnArea?.coordinates && loanParams.drawnArea.coordinates.length >= 3 && (
+        <div className="pt-4">
+          <SatelliteEvidence
+            coordinates={loanParams.drawnArea.coordinates}
+            crop={crop}
+            country="UZB"
+          />
+        </div>
       )}
     </div>
   )

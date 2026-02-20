@@ -39,7 +39,7 @@
 
 ### 1. Переменные окружения
 
-- **Dashboard**: `AI_SERVICE_URL`, `RISK_SERVICE_URL` (по умолчанию `http://localhost:8001`, `http://localhost:8002`), `DATASET_PATH`, `DEPLOYMENT_DIR`, `DISTRICTS_DIR` (опционально).
+- **Dashboard**: `AI_SERVICE_URL`, `RISK_SERVICE_URL` (по умолчанию `http://localhost:8001`, `http://localhost:8002`), `DATASET_PATH`, `DEPLOYMENT_DIR`, `DISTRICTS_DIR` (опционально). Для модуля **Satellite Evidence** (спутниковые снимки по годам): `CDS_CLIENT_ID` и `CDS_CLIENT_SECRET` (Copernicus Data Space) или `SENTINEL_HUB_CLIENT_ID` / `SENTINEL_HUB_CLIENT_SECRET`; кэш снимков: `SATELLITE_CACHE_TTL_SEC` (по умолчанию 86400).
 - **AI Service**: `GEMINI_API_KEY` (в `ai_service/.env`). Опционально `GEMINI_MODEL` (по умолчанию `gemini-2.5-flash`; при 404 укажите, например, `gemini-2.0-flash`).
 - **Risk Service**: `DEPLOYMENT_DIR` (по умолчанию `backend/deployment` — папка с `inference.py`, моделями, `config.json`).
 

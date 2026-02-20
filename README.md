@@ -1,272 +1,236 @@
-# AgroAtlas Analytics Map
+# AgroRisk (AgroAtlas Analytics Map)
 
-**Правило:** при изменении любого API-метода (бэкенд) нужно обновлять его системный анализ (СА) в этом README.
-
----
-
-## Мини системный анализ: `GET /dashboard/kpi-cards`
-
-Эндпоинт отдаёт агрегированные KPI для «risk cockpit»: одна пространственная единица (страна, область или район) — один набор карточек. KPI должны реально меняться при смене country → oblast → district, crop и year. Никаких глобальных fallback mean — только иерархический fallback. DSCR считается в Dashboard; Risk Service используется **только** для p10, p50, risk_category.
-
-### Назначение
-
-- Показать на дашборде четыре метрики: **аномалия урожая (p50)**, **downside-риск (p10)**, **доля портфеля по риску**, **DSCR (p50/p10 и статус)**.
-- Используется фронтом при выборе страны/региона/района и культуры для подстановки данных в KPI-карточки.
-
-### Пространственная агрегация и выбор года
-
-1. **`_filter_dataset(df, country, region_level, region_id, crop, year)`**  
-   - Фильтр по стране и культуре: `df["country_iso"] == country`, `df["crop"] == crop`.  
-   - Фильтр по региону:  
-     - `region_level == "country"` → не фильтруем по области/району.  
-     - **`oblast`:** в датасете в `region_name` лежат названия **районов/городов**, а фронт присылает имя области («Toshkent viloyati»). Поэтому для oblast не делаем точное сравнение с одной ячейкой — берём список районов этой области из GeoJSON (`_load_region_districts_cached(region_id)`) и фильтруем строки, у которых `region_name` (нормализованный) входит в этот список. Так по разным областям получаются разные подвыборки и разные KPI.  
-     - **`district`:** фильтр по `district_name` или `region_name` (точное или нормализованное совпадение с `region_id`).  
-   - Год не «тупо year == X»: вызывается **`_select_nearest_year(df, year)`**.
-
-2. **`_select_nearest_year(df, year)`**  
-   - Если запрошенный год есть в `df["year"]` → использовать его.  
-   - Иначе — взять `max(year < requested_year)` из доступных.  
-   - Если подходящего года нет → вернуть пустой датафрейм и флаг (нет fallback на global).
-
-3. **Иерархический fallback (при пустом результате после фильтрации)**  
-   - **district** → повторить на уровне **oblast**.  
-   - **oblast** → повторить на уровне **country**.  
-   - **country** → **NO DATA** (404, без synthetic/zeros/global mean).  
-   В ответе в `meta` возвращаются `fallback` (`"none"` | `"oblast"` | `"country"`) и `data_confidence` (`"high"` | `"low"`).
-
-### Формирование фичей и вызов Risk Service
-
-4. **`_compute_features(df_region, feature_cols)`**  
-   - Mean по колонкам из `config.json` → `feature_cols`.  
-   - **Вырожденная дисперсия:** при малом числе строк (≤5) нулевая/малая дисперсия ожидаема — исключение не выбрасывается. При большем числе строк, если у большинства фичей std < 1e-6, пишется **WARNING** в лог и возвращаются средние (без 500). После расчёта, если `mean_std < 1e-5`, в ответе выставляется `meta["data_confidence"] = "low"`.  
-   - Логирование: `KPI features rows=... year=... mean_std=...`.
-
-5. **Risk Service (один вектор)**  
-   - Payload: `{ region_id, year: year_used, crop, features }`.  
-   - Ответ используется **только** для: `p50`, `p10`, `risk_category`.  
-   - Если `p50 ≈ p10` → логируется WARNING.
-
-6. **Satellite baseline (для Vegetation/Season Stress)**  
-   - Берётся тот же scope (country/oblast/district + crop), но **по всем годам ≤ year_used** (берём последние 5 лет, если доступно).  
-   - Если лет < 3, делается иерархический fallback: district → oblast → country.  
-   - Если после fallback всё равно < 3 лет → **HTTP 404** (`No satellite baseline available`).
-
-### DSCR и риск-шейр в Dashboard
-
-7. **DSCR** — `_dscr_from_yield_anomaly(pct, crop, loan_per_ha, rate_pct, years)`  
-   - Эталон на 1 га: `BASE_YIELD_T_HA[crop]`, `PRICE_PER_TON[crop]`, `COST_RATIO` (NOI = выручка × (1 − cost_ratio)), annual_debt_service по loan/rate/years.  
-   - DSCR = NOI / annual_debt_service (для p50 и p10).
-
-8. **DSCR status (банковская логика)**  
-   - `p50 >= 1.25` и `p10 >= 1.0` → `"healthy"`.  
-   - `p50 >= 1.0` → `"borderline"`.  
-   - Иначе → `"stress"`.
-
-9. **Risk share** — `_risk_share_from_category(cat)`: High → { high: 100, … }, и т.д.  
-   - В ответе **обязательно** поле `"method": "single-region proxy"` (это не портфельная доля по кредитам, а прокси по категории риска одной единицы). В коде есть TODO: заменить на portfolio-weighted distribution, когда появится таблица кредитов.
-
-10. **scope_hash в meta** — строка вида `"UZB|Toshkent viloyati|wheat|2023"` (country|region_id|crop|year_used). Логируется в каждом ответе; если разные запросы дают один и тот же scope_hash при разных region_id — признак бага.
-
-11. **DSCR sanity-check** — если `dscr_p50 < 0.5` или `dscr_p50 > 3.0`, логируется **WARNING** (не ошибка; сигнал проверить цену/cost_ratio/yield).
-
-### Диагностическое логирование
-
-- После расчёта фичей: `KPI features rows=%d year=%d mean_std=%.4f`.  
-- При p50 ≈ p10: WARNING.  
-- После ответа: `KPI result: scope_hash=%s region=... level=... crop=... p50=... p10=... dscr50=...` (scope_hash логируется).  
-- DSCR вне [0.5, 3.0]: WARNING.  
-- `SAT_KPI baseline: scope_hash=... baseline_rows=... baseline_years=... fallback=...`  
-- `SAT_KPI values: scope_hash=... ndvi_cur=... score=... stress=... components=...`  
-- Если для разных регионов (в рамках одного scope) одинаковые p50 и dscr_p50 → **CRITICAL** (анти-баг защита).
-
-### Входные параметры (query)
-
-| Параметр       | Тип    | По умолчанию | Описание |
-|----------------|--------|--------------|----------|
-| `country`      | string | `UZB`        | Код страны (ISO). |
-| `region_level` | string | `country`    | Уровень: `country`, `oblast`, `district`. |
-| `region_id`    | string | —            | Имя области или района (обязателен при `oblast`/`district`). |
-| `crop`         | string | `wheat`      | Культура. |
-| `year`         | int    | текущий год  | Год прогноза. |
-
-Пример:  
-`GET /dashboard/kpi-cards?country=UZB&region_level=oblast&region_id=Toshkent%20viloyati&crop=wheat&year=2026`
-
-### Выходные данные (JSON)
-
-- `yield_anomaly_p50`: `{ value, unit: "%", trend: "positive"|"neutral"|"negative" }`.
-- `downside_risk_p10`: `{ value, unit: "%", min_p10 }`.
-- `portfolio_risk_share`: `{ high, moderate, low }` (пока одна категория = 100, остальные 0).
-- `dscr`: `{ p50, p10, status: "healthy"|"borderline"|"stress" }`.
-- `vegetation_health`: `{ value: 0..1, status: "good"|"watch"|"poor", ndvi_current, ndvi_baseline_p10, ndvi_baseline_p90 }` или `null`. **value** — перцентильный ранг: доля лет в baseline, где NDVI ≤ текущий (даёт вариацию по регионам).
-- `season_stress`: `{ value: 0..1, level: "low"|"medium"|"high", components: { drought, heat, ndvi_drop } }` или `null`. **components**: drought и heat — непрерывные 0..1; ndvi_drop — 0 или 1.
-- **`meta`**: `{ rows_used, year_used, fallback, data_confidence, scope_hash, baseline_fallback, baseline_years_used, satellite_warning?, ndvi_prev_missing? }`.  
-- **`portfolio_risk_share`** всегда содержит `"method": "single-region proxy"`.
-
-### Кэширование
-
-- Кэширование отключено: каждый запрос приводит к пересчёту (фильтрация датасета, вызов Risk Service, расчёт DSCR).
-
-### Зависимости
-
-- **Risk Service** (`RISK_SERVICE_URL`) — обязателен; при ошибке — 503.
-- **Dataset** и **config.json** (`feature_cols`) — обязательны; при пустом наборе после иерархического fallback — 404 (No data for KPI selection).
-- Переменные окружения для DSCR: `DSCR_COST_RATIO`, `DSCR_LOAN_PER_HA`, `DSCR_RATE_PCT`, `DSCR_TERM_YEARS`.
-
-### Краткая схема потока
-
-```
-Frontend
-    → GET /dashboard/kpi-cards?country=&region_level=&region_id=&crop=&year=
-Dashboard Service
-    → _filter_dataset() → иерархический fallback при пустоте
-    → _select_nearest_year() → год (без global fallback)
-    → _compute_features(df_region, feature_cols) → при вырождении: warning + data_confidence=low, без 500
-    → POST Risk Service /predict → только p50, p10, risk_category
-    → _dscr_from_yield_anomaly(..., loan_per_ha, rate_pct, years), _dscr_status(), _risk_share_from_category()
-    → диагностические логи (в т.ч. CRITICAL при одинаковых KPI у разных регионов)
-    → ответ { yield_anomaly_p50, downside_risk_p10, portfolio_risk_share, dscr, meta }
-```
-
-### Логика каждой KPI-карточки (что показываем, откуда, как считаем)
-
-- **Yield Anomaly (p50)**  
-  **Что показываем:** медианный прогноз аномалии урожая в процентах (например +9% или −3%).  
-  **Откуда:** Risk Service возвращает `p50` по одному вектору фичей (страна/область/район + культура + год).  
-  **Как считаем:** фичи готовит Dashboard из dataset (фильтр по стране, культуре, региону, выбор ближайшего года), отправляются в `POST /predict`; значение из ответа показываем как есть; тренд: negative при p50 &lt; −2%, positive при &gt; +2%, иначе neutral.
-
-- **Downside Risk (p10)**  
-  **Что показываем:** нижний перцентиль аномалии урожая (худший из 10% сценариев), в %.  
-  **Откуда:** тот же вызов Risk Service, поле `p10`.  
-  **Как считаем:** без доп. расчёта на фронте — просто отображаем `p10` из API.
-
-- **High Risk Share**  
-  **Что показываем:** доля «высокого риска» в виде одного числа (0 или 100).  
-  **Откуда:** Risk Service возвращает `risk_category` (High / Moderate_High / Moderate_Low / Low); в ответе API есть `portfolio_risk_share` с полем `method: "single-region proxy"`.  
-  **Как считаем:** это не реальная портфельная доля по кредитам — одна выбранная единица (страна/область/район) попадает в одну категорию; мы показываем 100% в этой категории (high/moderate/low). Итог: «High Risk Share» = 100, если категория High, иначе 0.
-
-- **DSCR (p50 / p10)**  
-  **Что показываем:** два числа (DSCR по медианному и по пессимистичному сценарию) и статус (healthy / borderline / stress).  
-  **Откуда:** считает Dashboard, не Risk Service.  
-  **Как считаем:** по эталону на 1 га: базовый урожай и цена по культуре, выручка, NOI = выручка × (1 − cost_ratio), годовой платёж по кредиту (loan_per_ha, rate, срок). DSCR = NOI / annual_debt_service — отдельно для p50 и p10 (подставляем соответствующую аномалию в прогноз урожая). Статус: healthy при DSCR p50 ≥ 1.25 и p10 ≥ 1.0; borderline при p50 ≥ 1.0; иначе stress.
-
-- **Vegetation Health Index (VHI/NDVI Score)**  
-  **Что показываем:** нормированный индекс 0..1 + статус (good/watch/poor) + NDVI текущего года и baseline p10/p90.  
-  **Откуда:** вычисляется в Dashboard по спутниковым данным (NDVI) из dataset.  
-  **Как считаем:** берём `ndvi_current` = среднее NDVI по `df_year` (год `year_used`). Для baseline — NDVI по тем же границам и культуре за несколько лет (<= year_used), агрегируем по годам, считаем p10/p90. Далее `score = (ndvi_current - p10)/(p90 - p10 + 1e-6)` с ограничением [0..1]. Статус: good ≥ 0.7, watch 0.4..0.7, poor < 0.4.
-
-- **Season Stress Index**  
-  **Что показываем:** индекс 0..1 + уровень (low/medium/high) + компоненты (drought/heat/ndvi_drop).  
-  **Откуда:** вычисляется в Dashboard по climate/satellite прокси из dataset.  
-  **Как считаем:**  
-  `drought = 1`, если `precipitation_anomaly_mm < -50`;  
-  `heat = 1`, если `temperature_mean_C > 25`;  
-  `ndvi_drop = 1`, если `NDVI_current < NDVI_prev_year * 0.85` (если предыдущий год есть).  
-  Итог: `stress = 0.4*drought + 0.3*heat + 0.3*ndvi_drop` (clamp 0..1). Уровень: low < 0.35, medium 0.35..0.65, high > 0.65.
+Веб-приложение для оценки сельскохозяйственного и кредитного риска: спутниковые данные, ML-прогнозы урожая, карта регионов, кредитный анализ по нарисованному участку и AI-рекомендации.
 
 ---
 
-## Логика цветов на карте
+## Содержание
 
-Раскраска полигонов (областей/районов) по **аномалии урожая (p50)** в процентах.
-
-- **Источник данных:** для каждого полигона фронт вызывает `GET /dashboard/metrics` с `scope=region` или `scope=district` и `area_name` = имя области/района из GeoJSON. Из ответа берётся число `p50` (если пришло в долях &lt; 1 — умножается на 100). Результаты складываются в `yieldAnomalyByArea[areaName]`.
-
-- **Сопоставление имён:** ключ в `yieldAnomalyByArea` — то же имя, что в свойствах полигона (`name` или `ADM1_EN`). Если имя из запроса не совпадает с именем в GeoJSON, полигон остаётся без данных и заливается нейтральным цветом (полупрозрачный белый).
-
-- **Шкала цветов (getColorByAnomaly):**  
-  - **&lt; −15%** — красный (`#FF4D4D`) — критичное падение.  
-  - **−15% … −5%** — оранжевый (`#FFA726`) — умеренные потери.  
-  - **−5% … +5%** — серый (`#E0E0E0`) — стабильно.  
-  - **+5% … +15%** — светло-зелёный (`#66BB6A`) — рост.  
-  - **&gt; +15%** — тёмно-зелёный (`#2E7D32`) — сильный рост.
-
-- **Если по региону нет данных:** заливка `rgba(255, 255, 255, 0.15)`.
-
-- **Почему «всё зелёное»:** если бэкенд для всех областей возвращает p50 &gt; 5%, все полигоны попадут в зелёные оттенки. Чтобы видеть различие, нужны разные p50 по регионам (и корректное совпадение имён области в API и на карте). Добавлены два оттенка зелёного (+5…+15% и &gt;+15%), чтобы при положительной аномалии была видна градация.
+- [Обзор](#обзор)
+- [Страницы и функционал](#страницы-и-функционал)
+- [Бэкенд-сервисы](#бэкенд-сервисы)
+- [Запуск](#запуск)
+- [Масштабирование UI](#масштабирование-ui)
 
 ---
 
-## Зачем на дашборде вызывается `GET /dashboard/metrics`, если карточки от `kpi-cards`?
+## Обзор
 
-- **Карточки KPI** заполняются **только** из `GET /dashboard/kpi-cards` (один запрос на выбранную страну/область/район).
-- **`GET /dashboard/metrics`** на дашборде используется в двух других сценариях:
-  1. **Раскраска карты** — для каждого полигона (области или района) делается отдельный запрос; из ответа берётся только **p50** и по нему задаётся цвет. У `kpi-cards` нет «пакета» по списку районов, поэтому для раскраски в цикле вызывается `metrics`.
-  2. **Модалка «Explain»** — при клике по карточке в AI отправляется контекст: `valueAtRisk`, `riskScore`, `yieldAnomaly`, `p10`/`p50`/`p90`, `spread`, `confidenceLabel`. Этот контекст сейчас берётся из одного вызова `metrics` при смене выбора (`selectedDistrictData`). Карточки при этом по-прежнему питаются от `kpi-cards`.
+- **Фронтенд:** Next.js (App Router), React, Tailwind, Recharts, Leaflet. Один маршрут `/`; по авторизации показывается лендинг или дашборд.
+- **Бэкенд:** три микросервиса — **Dashboard** (API Gateway), **Risk Service** (ML-модели), **AI Service** (Gemini). Dashboard агрегирует данные, считает DSCR и спутниковые индексы, проксирует запросы к Risk и AI.
 
 ---
 
-## Мини системный анализ: `GET /dashboard/metrics`
+## Страницы и функционал
 
-Эндпоинт возвращает расширенный набор метрик риска для **одной** пространственной единицы (страна, область или район): перцентили, категория риска, value at risk, AI-советы. Используется для раскраски карты (много вызовов — по одному на полигон), для контекста модалки Explain и в модуле аналитики (страновой прогноз).
+### 1. Лендинг (Landing Page)
 
-### Назначение
+**Когда показывается:** пользователь не авторизован.
 
-- Дать по одной единице: перцентили p10/p50/p90, спред, категорию риска, risk score, value at risk, подпись уверенности и AI-советы.
-- На фронте: (1) цикл по областям/районам — из ответа берётся **p50** для цвета полигона; (2) один вызов при выборе региона — результат идёт в контекст **Explain**; (3) модуль аналитики — один вызов по стране для сценария прогноза и выручки.
+**Функционал:**
 
-### Откуда берутся данные
+- **Hero:** фоновая картинка, заголовок «AgroRisk», подзаголовок про field-level insights для кредита и страхования. Кнопки **Get Started** и **Sign In** открывают модалку авторизации (режим регистрации / входа).
+- **Навбар:** логотип AgroRisk, кнопки Sign In и Sign Up (то же модальное окно).
+- **Блок Features:** четыре карточки — Satellite Monitoring, AI Risk Models, Field-Level Analytics, Confidence Intervals (P10/P50/P90).
+- **Блок Use Cases:** «Trusted By» — банки, страховые, агро-аналитики.
+- **How It Works:** четыре шага — Select Field → Choose Crop → Run Analysis → Get Insights.
+- **Footer:** ссылки Product, Company, Legal, Resources.
 
-1. **Фичи**  
-   Так же, как у `kpi-cards`: dataset + config → `_compute_features()` → один payload (region_id, year, crop, features).
+**Как работает:** клик по Get Started / Sign Up устанавливает режим модалки «signup», по Sign In — «signin»; модалка открывается через контекст `AuthContext`. После успешного входа состояние `isAuthenticated` меняется, рендерится дашборд.
 
-2. **Прогноз**  
-   **Risk Service** `POST /predict` — тот же запрос. Из ответа используются: `p50`, `p10`, `p90`, `spread`, `risk_category`.
+---
 
-3. **Локально в Dashboard**  
-   - **riskScore** — из `_risk_score_from_category(risk_category)` (числовой балл по категории).  
-   - **valueAtRisk** — от объёма экспозиции и доли потерь, зависящей от |p10| (в коде: base_exposure × loss_fraction, формат вида `$X.XM`).  
-   - **confidenceLabel** — из `_confidence_label(spread)` по величине спреда.
+### 2. Дашборд (Dashboard) — вкладка «Дашборд»
 
-4. **AI-советы**  
-   **AI Service** (`AI_SERVICE_URL`): `POST /tips` с параметрами country, year, crop, risk_score, p50, p10, p90, spread, risk_category, lang. Ответ — список строк `tips`. При недоступности AI возвращаются fallback-советы.
+**Когда показывается:** авторизованный пользователь, активная вкладка **Dashboard** в боковом меню.
 
-Итого: **прогноз** — Risk Service; **метрики и value at risk** — расчёт в Dashboard; **советы** — AI Service (с fallback).
+**Функционал:**
 
-### Входные параметры (query)
+- **Интерактивная карта риска (InteractiveRiskMap):** на весь экран. Отображает полигоны областей (UZB) или районов при выборе области. Цвет полигона по аномалии урожая (p50): красный (< −15%), оранжевый (−15%…−5%), серый (−5%…+5%), светло-зелёный (+5%…+15%), тёмно-зелёный (> +15%). Данные для раскраски — `GET /dashboard/metrics` по каждому полигону (scope=region или district, area_name).
+- **Фильтры над картой:** страна (по умолчанию UZB), область (список из GeoJSON), год (текущий / список). При смене области подгружается GeoJSON районов из `/districts/<region>.json`, карта переключается на уровень районов.
+- **KPI-карточки:** запрос `GET /dashboard/kpi-cards` с параметрами country, region_level, region_id, crop, year. Отображаются: **Yield Anomaly (p50)**, **Downside Risk (p10)**, **High Risk Share**, **DSCR (p50/p10, статус healthy/borderline/stress)**, **Vegetation Health** (NDVI-индекс), **Season Stress** (drought/heat/ndvi_drop). При клике по области/району на карте выбор обновляется и KPI перезапрашиваются.
+- **Explain по карточке:** при клике по KPI-карточке открывается модалка «Explain». Отправляется запрос к Dashboard `POST /dashboard/explain-kpi` (или structured), Dashboard вызывает AI Service; в модалке показывается структурированный ответ (заголовки, метрики, секции, рекомендации) или текст. Контекст для Explain — выбранный регион, метрики (valueAtRisk, riskScore, yieldAnomaly, p10/p50/p90, spread, confidenceLabel).
+- **Боковая панель:** общая для всего приложения — иконки Дашборд, Портфель, Аналитика, Участки; профиль и выход; сворачивание/разворот панели.
 
-| Параметр    | Тип    | По умолчанию | Описание |
-|-------------|--------|--------------|----------|
-| `country`   | string | `UZB`        | Код страны (ISO). |
-| `year`      | int    | `2024`       | Год прогноза. |
-| `crop`      | string | `wheat`      | Культура. |
-| `scope`     | string | `country`    | Уровень: `country`, `region` (область), `district` (район). |
-| `area_name` | string | —            | Имя области или района (при scope region/district). |
-| `lang`      | string | `en`         | Язык для AI-советов. |
+**Как работает:** карта рендерится через динамический импорт Leaflet; при выборе страны загружается `/regions.json`, при выборе области — соответствующий файл из `/districts/`. KPI и метрики для раскраски идут с Dashboard; при недоступности Risk Service — 503, при недоступности AI — fallback-советы.
 
-Пример:  
-`GET /dashboard/metrics?country=UZB&year=2026&scope=district&area_name=Zarafshan+city&crop=wheat`
+---
 
-### Выходные данные (JSON)
+### 3. Портфель (Portfolio)
 
-- `riskScore` — числовой балл риска по категории.
-- `valueAtRisk` — строка вида `$X.XM`.
-- `yieldAnomaly` — строка с p50 в процентах, например `"-3.2%"`.
-- `p10`, `p50`, `p90` — числа (перцентили аномалии урожая, %).
-- `spread` — число (разброс).
-- `confidenceLabel` — подпись уверенности по спреду.
-- `riskCategory` — строка (High / Moderate_High / Moderate_Low / Low).
-- `aiTips` — массив строк (советы от AI или fallback).
+**Когда показывается:** вкладка **Portfolio** в боковом меню.
 
-### Кэширование
+**Функционал:**
 
-- **Не кэшируется.** Каждый запрос ведёт к вызову Risk Service (и при необходимости AI Service). Поэтому массовый вызов для раскраски карты (по одному на полигон) даёт большую нагрузку; на фронте сделано ограничение параллелизма и отмена при смене выбора.
+- **Заголовок:** «Asset Portfolio», краткое описание.
+- **Import CSV:** кнопка открывает блок загрузки CSV. Ожидаемые колонки: Region, Crop, Exposure (USD), Maturity Date (опционально). После выбора файла режим загрузки закрывается (логика импорта — заглушка).
+- **Фильтры:** выпадающие списки — по уровню риска (All / Low / Moderate / High) и по культуре (All / Wheat / Corn / Rice / Cotton). Фильтрация применяется к списку демо-активов.
+- **Сетка активов:** карточки с полями: локация, культура, бейдж риска (Low/Moderate/High), Exposure, Yield Anomaly, District Level, Analysis Date, кнопка «View Details». Данные пока демо (sampleAssets); при пустом списке после фильтрации показывается заглушка «No assets match» и призыв создать первый актив.
 
-### Зависимости
+**Как работает:** состояние filterRisk и filterCrop; список sampleAssets фильтруется; рендер карточек или пустого состояния. CSV upload только логирует имя файла и закрывает блок.
 
-- **Risk Service** (`RISK_SERVICE_URL`) — обязателен; при ошибке/таймауте — 503.
-- **AI Service** (`AI_SERVICE_URL`) — опционален; при недоступности подставляются fallback-советы.
-- **Dataset** и **config** — как для kpi-cards.
+---
 
-### Краткая схема потока
+### 4. Аналитика — Кредитный риск анализ (Analytics)
 
+**Когда показывается:** вкладка **Analytics** в боковом меню.
+
+Модуль из трёх фаз: ввод параметров и участка → «AI Thinking» → результаты.
+
+#### Фаза 1: Ввод (Input Phase)
+
+- **Карта на весь экран:** компонент DrawMap с `fillHeight`: спутниковая/уличная карта (Leaflet + Esri), на весь доступный экран. Поверх — плавающие «стеклянные» карточки (glass): форма слева, тулбар карты справа сверху, при наличии — баннер «Detected Location», внизу — подсказки (Draw rectangle, Draw polygon, Edit shape, Region borders, District borders).
+- **Форма слева (стеклянная карточка):** заголовок «Кредитный Риск Анализ», подзаголовок «Введите параметры кредита и нарисуйте участок на карте». Две секции одной высоты (grid):
+  - **Параметры кредита:** Сумма кредита (USD), Процентная ставка (%), Срок (лет) — три инпута в ряд; выравнивание инпутов по низу ячеек.
+  - **Нарисовать сельхозучасток:** при наличии нарисованного участка — координаты (широта/долгота) и иконка; Тип культуры (выбор: Хлопок, Пшеница, Рис, Кукуруза), Площадь (гектары). Площадь можно подставить автоматически из площади нарисованного полигона.
+- **Рисование на карте:** инструменты — прямоугольник, полигон, редактирование, удаление, сброс вида. Включение границ областей (жёлтые) и районов (белые) из GeoJSON. После рисования фигуры в форму подставляются координаты центра и площадь; данные участвуют в запросе анализа.
+- **Кнопка «Запуск анализа»:** активна при заполненных сумме кредита, площади и нарисованном участке. По нажатию вызывается `runAnalysis()`.
+
+**Как работает:** форма хранит loanParams (loanAmount, interestRate, termYears, crop, hectares, drawnArea). DrawMap при создании/редактировании/удалении фигуры вызывает `onAreaDrawn(area)`, обновляется loanParams.drawnArea и при необходимости hectares. При «Запуск анализа» выполняется запрос к Dashboard.
+
+#### Запуск анализа (runAnalysis)
+
+1. Устанавливается фаза `analyzing`, сбрасывается ошибка.
+2. Вызов **GET /dashboard/metrics** с country=UZB, year=текущий, crop из формы, scope=country, lang из настроек языка. Ответ: p10, p50, p90, spread, riskCategory, aiTips и др.
+3. Показ пошаговой анимации «AI Thinking» (запрос Sentinel, обработка NDVI и т.д.).
+4. Расчёт на фронте: базовая урожайность по культуре, прогноз урожая по p50 (аномалия), ожидаемая выручка, DSCR (годовой долг по кредиту из суммы/ставки/срока, NOI из выручки и cost_ratio). Формируется объект результата: predictedYield, yieldAnomaly, riskCategory, trendDynamics, ndviSlope, htcIndex, confidenceSpread, p10/p50/p90, dscr, annualDebtService, expectedRevenue, assetName, region, district, aiTips.
+5. Переход в фазу **results**.
+
+#### Фаза 2: Analyzing Phase
+
+- Отображается последовательность шагов с иконками (например: запрос Sentinel, обработка NDVI, оценка риска и т.д.). Текущий шаг подсвечивается; шаги переключаются с задержкой до завершения запроса и расчётов.
+
+#### Фаза 3: Результаты (Results Phase)
+
+- **Шапка:** название актива, регион и район, бейдж риска (LOW / MODERATE / HIGH), кнопка «Новый анализ» (сброс в фазу input).
+- **AI Recommendation:** кнопка раскрытия блока с агро-рекомендациями. При открытии вызывается AI Service (через Dashboard или напрямую) с контекстом по полю (регион, культура, NDVI, риск, DSCR и т.д.); отображается структурированный ответ (riskAssessment, immediateActions, seasonalOutlook, resourceOptimization) или заглушка при ошибке.
+- **Карточка DSCR:** значение DSCR, годовой платёж по долгу, ожидаемая выручка; цвет по уровню (зелёный / оранжевый / красный).
+- **Satellite Evidence (модуль на странице результатов):** для нарисованного полигона — слайдер года (2017–текущий), переключатель True Color / NDVI, режим сравнения До/После (baseline vs выбранный год), полоса из 8 миниатюр, подпись (год, окно композита, источник, облачность). Данные — **GET /dashboard/satellite/timelapse** (Copernicus Data Space Sentinel-2 L2A). Помогает банкиру/инвестору понять, почему оценка риска обоснована.
+- **Метрики и графики:** предсказанный урожай (т/га), аномалия урожая (%), тренд, NDVI slope, HTC index, confidence spread; перцентили p10/p50/p90. Подгрузка **GET /dashboard/chart-data** (country, crop, scope) для графиков: NDVI anomaly timeline, risk distribution, precipitation vs vegetation.
+- **AI Tips:** список советов из ответа /dashboard/metrics (aiTips).
+- **Кнопка «Добавить в участки»:** сохраняет результат в локальное хранилище (fields-db, localStorage), вызывает `onFieldAdded()` — переход на вкладку «Участки».
+
+**Как работает:** результат анализа хранится в state; при «Добавить в участки» вызывается `addField()` из `lib/fields-db.ts` с метаданными и снимком result, затем переключение на вкладку Fields.
+
+---
+
+### 5. Участки (Fields)
+
+**Когда показывается:** вкладка **Fields** в боковом меню.
+
+**Функционал:**
+
+- **Список участков:** таблица из `getFields()` (localStorage, ключ `agro-fields`). Колонки: Location (district + coordinates), Crop, Risk Level (бейдж), Last Update, действия — «View Results», «Remove».
+- **Детальный вид:** при выборе участка по «View Results» показывается `FieldDetailView`: те же метрики и структура, что в Results Phase (название, регион, район, риск, DSCR, урожай, перцентили, графики, AI tips). Кнопка «Back» возвращает к таблице.
+- **Remove:** удаление записи из localStorage и обновление списка.
+
+**Как работает:** данные хранятся только на клиенте (localStorage). При удалении вызывается `removeField(id)`, при открытии детали — `getFieldById(id)`; список обновляется через `refreshFields()`.
+
+---
+
+## Бэкенд-сервисы
+
+Запуск и переменные окружения см. в [backend/README.md](backend/README.md). Ниже — назначение и основные эндпоинты каждого сервиса.
+
+---
+
+### Dashboard Service (API Gateway)
+
+- **Порт:** 8000 (по умолчанию).
+- **Назначение:** единая точка входа для фронта: агрегация данных, расчёт KPI, DSCR, спутниковых индексов (Vegetation Health, Season Stress), прокси к Risk и AI.
+
+**Основные эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/` | Информация о сервисе и ссылки на docs/health. |
+| GET | `/health` | Статус сервиса. |
+| GET | `/dashboard/health/dependencies` | Проверка доступности Risk и AI сервисов. |
+| GET | `/dashboard/kpi-cards` | KPI для выбранного региона: yield_anomaly_p50, downside_risk_p10, portfolio_risk_share, dscr, vegetation_health, season_stress. Параметры: country, region_level, region_id, crop, year. Использует датасет, config (feature_cols), Risk Service (p10, p50, risk_category), локальный расчёт DSCR и спутниковых индексов. |
+| GET | `/dashboard/metrics` | Метрики для одной единицы: p10/p50/p90, spread, risk_category, riskScore, valueAtRisk, confidenceLabel, aiTips. Параметры: country, year, crop, scope, area_name, lang. Risk Service — прогноз; AI Service — советы (с fallback при недоступности). |
+| GET | `/dashboard/chart-data` | Данные для графиков: ndviAnomalyTimeline, riskDistribution, precipVsVegetation. Параметры: country, crop, scope. |
+| POST | `/dashboard/predict` | Прокси к Risk Service `POST /predict`. |
+| POST | `/dashboard/recommend` | Прокси к AI Service `POST /recommend`. |
+| POST | `/dashboard/kpi-explain` | Прокси к AI для объяснения KPI (legacy). |
+| POST | `/dashboard/explain-kpi` | Прокси к AI Service explain-kpi; возвращает explanation и isMock. |
+| GET | `/dashboard/satellite/timelapse` | Спутниковые снимки по годам для AOI (Sentinel-2 L2A). Параметры: polygon (JSON [lat,lng]), country, crop, year, product (truecolor \| ndvi). Ответ: year_used, years: [{year, imageUrl, cloudHint, compositeWindow, source}], baseline: {imageUrl, yearsUsed}. Кэш по hash(AOI)+product+year+crop, TTL 24ч. |
+| GET | `/dashboard/satellite/preview` | Один снимок за период. Параметры: polygon или bbox, date_from, date_to, product. Ответ: imageUrl (base64), compositeWindow, source, cloudHint. |
+
+**Satellite Evidence — откуда взять учётную запись и куда вставить:**
+
+1. **Регистрация:** зайдите на [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/), нажмите на аватар (правый верх), зарегистрируйтесь и подтвердите email.
+2. **OAuth-клиент:** откройте [Dashboard → User Settings](https://shapps.dataspace.copernicus.eu/dashboard/#/account/settings), раздел **OAuth clients** → **Create**. Укажите имя клиента и срок действия (или «Never expire»). Нажмите **Create** и **сразу скопируйте** Client ID и Client Secret (секрет потом нельзя посмотреть).
+3. **Куда вставить:** создайте или отредактируйте файл **`backend/services/dashboard/.env`** и добавьте две строки (подставьте свои значения):
+   ```
+   CDS_CLIENT_ID=ваш_client_id_из_дашборда
+   CDS_CLIENT_SECRET=ваш_client_secret_из_дашборда
+   ```
+   Альтернативные имена переменных: `SENTINEL_HUB_CLIENT_ID` и `SENTINEL_HUB_CLIENT_SECRET`.
+4. Перезапустите Dashboard (`uvicorn app:app --port 8000`). После этого модуль «Satellite Evidence» на странице анализа будет подгружать снимки Sentinel-2 L2A. Без этих переменных снимки не появятся, в интерфейсе будет сообщение об ошибке.
+
+**Зависимости:** Risk Service (`RISK_SERVICE_URL`), AI Service (`AI_SERVICE_URL`), датасет (`DATASET_PATH`), конфиг и GeoJSON-районы (опционально). При недоступности Risk — 503; при недоступности AI — fallback-советы и mock объяснения.
+
+---
+
+### Risk Service
+
+- **Порт:** 8002 (по умолчанию).
+- **Назначение:** ML-модели (LightGBM, квантильная регрессия) для прогноза аномалии урожая и категории риска. Использует `backend/deployment`: inference.py, model_p10/p50/p90.joblib, config.json.
+
+**Эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/` | Название сервиса, docs, health, список endpoints. |
+| GET | `/health` | status, models_loaded. |
+| POST | `/predict` | Предсказание для одного наблюдения. Тело: region_id, year, crop, features (словарь фичей). Ответ: p10, p50, p90, spread, risk_category. |
+
+**Переменные:** `DEPLOYMENT_DIR` — путь к папке с inference и моделями. При старте загружается `RiskScorer`; при не загруженных моделях POST /predict возвращает 503.
+
+---
+
+### AI Service
+
+- **Порт:** 8001 (по умолчанию).
+- **Назначение:** генерация текстов через Gemini API: советы по рискам, агро-рекомендации, структурированные объяснения KPI.
+
+**Эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/` | Название сервиса, docs, health, список endpoints. |
+| GET | `/health` | status: ok. |
+| GET | `/env-check` | Диагностика: GEMINI_API_KEY_set, GEMINI_MODEL (без раскрытия ключа). |
+| POST | `/tips` | Советы по метрикам (country, year, crop, risk_score, p50, p10, p90, spread, risk_category, lang). Ответ: tips (массив строк). При ошибке Gemini — fallback-советы. |
+| POST | `/recommend` | Агро-рекомендации по региону/культуре/NDVI/риску и т.д. Ответ: riskAssessment, immediateActions, seasonalOutlook, resourceOptimization, raw. |
+| POST | `/explain-kpi` | Объяснение одной KPI-карточки (scope, card_id, metrics, language). Ответ: explanation, isMock. |
+| POST | `/explain-kpi-structured` | Структурированное объяснение KPI (JSON с title, subtitle, metrics, sections, next_actions и т.д.). |
+
+**Переменные:** `GEMINI_API_KEY` (обязательно), `GEMINI_MODEL` (по умолчанию gemini-2.5-flash). При недоступности API или ошибке ответа возвращаются fallback-тексты и isMock: true где применимо.
+
+---
+
+## Запуск
+
+**Фронтенд (из корня проекта):**
+
+```bash
+npm install
+npm run dev
 ```
-Frontend (карта: цикл по area_name ИЛИ один вызов для Explain/аналитики)
-    → GET /dashboard/metrics?country=&year=&crop=&scope=&area_name=&lang=
-Dashboard Service
-    → _compute_features() → payload
-    → POST Risk Service /predict → p50, p10, p90, spread, risk_category
-    → _risk_score_from_category(), valueAtRisk, _confidence_label()
-    → POST AI Service /tips (или fallback) → aiTips
-    → ответ { riskScore, valueAtRisk, yieldAnomaly, p10, p50, p90, spread, confidenceLabel, riskCategory, aiTips }
-```
+
+Откройте http://localhost:3000. API по умолчанию — `NEXT_PUBLIC_DASHBOARD_API_URL=http://localhost:8000`.
+
+**Бэкенд (три сервиса):**
+
+См. [backend/README.md](backend/README.md): переменные окружения, запуск по отдельности (AI на 8001, Risk на 8002, Dashboard на 8000) или скриптом `backend/scripts/run-all-services.ps1`.
+
+**Правило:** при изменении любого API-метода на бэкенде нужно обновлять системный анализ (описание эндпоинта и потока данных) в этом README или в backend/README.md.
+
+---
+
+## Адаптивная вёрстка (layout)
+
+Глобального масштабирования по высоте экрана **нет** (без letterbox и transform: scale). Design baseline — **360px** по ширине; вёрстка адаптивная: breakpoint'ы compact/regular/expanded, класс `.content` для центрированной колонки, `html { font-size: clamp(...) }`, safe area через `env(safe-area-inset-*)`. Модуль `lib/layout-scale.tsx` даёт только breakpoint, размеры viewport и safe area. Диагностика: `NEXT_PUBLIC_DEBUG_LAYOUT=true` — панель с viewport и breakpoint.
+
+Подробно: [docs/LAYOUT-SCALING.md](docs/LAYOUT-SCALING.md).

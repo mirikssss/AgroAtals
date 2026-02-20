@@ -26,7 +26,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Hero block: same background image + overlay for header and hero */}
-      <div className="relative flex flex-col min-h-[109vh] overflow-hidden">
+      <div className="relative flex flex-col min-h-screen overflow-hidden">
         {/* Background image — stretches over header + hero */}
         <div
           className="absolute inset-0 bg-cover bg-no-repeat"
@@ -37,25 +37,25 @@ export function LandingPage() {
 
         {/* Navigation — transparent, so hero image shows through */}
         <nav className="relative z-10 border-b border-white/20 bg-transparent backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Satellite className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-semibold text-white">AgroRisk</span>
+              <span className="text-lg sm:text-xl font-semibold text-white">AgroRisk</span>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Button
                 onClick={handleSignIn}
                 variant="ghost"
-                className="text-white hover:bg-white/10 px-4 py-2"
+                className="text-white hover:bg-white/10 px-3 sm:px-4 py-2 text-sm sm:text-base"
               >
                 Sign In
               </Button>
               <Button
                 onClick={handleSignUp}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 px-3 sm:px-4 py-2 text-sm sm:text-base"
               >
                 Sign Up
               </Button>
@@ -67,10 +67,10 @@ export function LandingPage() {
         <section className="relative z-10 flex-1 flex items-center justify-center px-4 py-20">
           <div className="max-w-3xl w-full text-center space-y-8">
           <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-bold text-white text-balance">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white text-balance">
               AgroRisk
             </h1>
-            <p className="text-xl text-white/90 text-balance">
+            <p className="text-lg sm:text-xl text-white/90 text-balance">
               Field-level insights for smarter credit and insurance decisions
             </p>
           </div>
@@ -78,14 +78,14 @@ export function LandingPage() {
           <div className="flex gap-4 justify-center flex-wrap">
             <Button 
               onClick={handleGetStarted}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 text-lg rounded-lg shadow-sm hover:shadow-md transition-all font-semibold"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg rounded-lg shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 font-semibold"
             >
               Get Started
             </Button>
             <Button
               onClick={handleSignIn}
               variant="outline"
-              className="border-white/80 text-white hover:bg-white/10 px-8 py-6 text-lg bg-transparent rounded-lg"
+              className="border-white/80 text-white hover:bg-white/10 px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg bg-transparent rounded-lg transition-all hover:-translate-y-0.5"
             >
               Sign In
             </Button>

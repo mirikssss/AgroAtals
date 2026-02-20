@@ -622,11 +622,11 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
             </div>
             <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
-              <p className="text-xl font-semibold text-foreground">${r.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+              <p className="text-xl font-bold text-foreground">${r.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
             <div className="text-center px-3 sm:px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
-              <p className="text-xl font-semibold text-foreground">${r.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+              <p className="text-xl font-bold text-foreground">${r.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
           <div className={`px-4 py-2 rounded-lg w-full sm:w-auto ${r.dscr >= 1.25 ? 'bg-green-100 dark:bg-green-950/50' : r.dscr >= 1.0 ? 'bg-orange-100 dark:bg-orange-950/50' : 'bg-red-100 dark:bg-red-950/50'}`}>

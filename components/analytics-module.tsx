@@ -1048,11 +1048,11 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
             </div>
             <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
-              <p className="text-xl font-semibold text-foreground">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+              <p className="text-xl font-bold text-foreground">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
             <div className="text-center px-3 sm:px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
-              <p className="text-xl font-semibold text-foreground">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+              <p className="text-xl font-bold text-foreground">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
           <div className={`px-4 py-2 rounded-lg w-full sm:w-auto ${

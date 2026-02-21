@@ -1,14 +1,16 @@
 """
 AI Service: логика вызовов Gemini API.
-Изолированный сервис с таймаутами, fallback и безопасной обработкой ответов.
+Изолированный сервис с таймаутами, fallback, кэшем и повтором при 429.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import ssl
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Optional
@@ -31,6 +33,30 @@ GEMINI_MAX_OUTPUT_EXPLAIN = 8192
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_MAX_OUTPUT_STRUCTURED = 8192
 GEMINI_TIMEOUT_STRUCTURED = 300
+
+# Кэш ответов Gemini (tips, recommend), чтобы не жечь квоту при повторных запросах
+_CACHE_TTL_SEC = 300  # 5 минут
+_gemini_cache: dict[str, tuple[Any, float]] = {}
+
+
+def _cache_get(key: str):  # -> (value, True) or (None, False)
+    now = time.time()
+    if key in _gemini_cache:
+        val, expiry = _gemini_cache[key]
+        if now < expiry:
+            return val, True
+        del _gemini_cache[key]
+    return None, False
+
+
+def _cache_set(key: str, value: Any) -> None:
+    _gemini_cache[key] = (value, time.time() + _CACHE_TTL_SEC)
+    # Ограничить размер кэша (оставить последние ~100 записей)
+    if len(_gemini_cache) > 150:
+        expired = [(k, v[1]) for k, v in _gemini_cache.items()]
+        expired.sort(key=lambda x: x[1])
+        for k, _ in expired[:50]:
+            _gemini_cache.pop(k, None)
 
 
 def _get_api_key() -> str:
@@ -56,14 +82,28 @@ def _fallback_ai_tips() -> list[str]:
     ]
 
 
+def _parse_429_retry_seconds(err_body: str) -> float:
+    """Из тела 429 вытащить «Please retry in X.XXs» и вернуть X (макс. 30 сек)."""
+    match = re.search(r"retry in (\d+\.?\d*)\s*s", err_body or "", re.I)
+    if not match:
+        return 10.0
+    try:
+        sec = float(match.group(1))
+        return min(max(sec, 1.0), 30.0)
+    except (ValueError, TypeError):
+        return 10.0
+
+
 def _call_gemini(
     prompt: str,
     temperature: float = 0.7,
     max_output_tokens: int = 8192,
     timeout: int = GEMINI_TIMEOUT_GENERIC,
+    _retry_on_429: bool = True,
 ) -> Optional[str]:
     """
-    Вызов Gemini API. Возвращает текст ответа или None при ошибке/квоте.
+    Вызов Gemini API. При 429 — один повтор после ожидания (retry in Xs из ответа).
+    Возвращает текст ответа или None при ошибке/квоте.
     """
     api_key = _get_api_key()
     if not api_key:
@@ -75,44 +115,55 @@ def _call_gemini(
         "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
     }).encode("utf-8")
 
-    try:
-        req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        err_body = ""
-        try:
-            err_body = e.read().decode("utf-8", errors="replace")[:500]
-        except Exception:
-            pass
-        if e.code == 429:
-            logger.warning("Gemini 429 (quota), using fallback")
-        elif e.code == 404:
-            logger.warning(
-                "Gemini 404 (model not found). Set GEMINI_MODEL in ai_service/.env to a valid model, e.g. gemini-2.5-flash or gemini-2.0-flash."
-            )
-        elif e.code == 403:
-            logger.warning("Gemini 403 (Forbidden). Check GEMINI_API_KEY and enable Generative Language API.")
-        elif e.code == 400:
-            logger.warning("Gemini 400 Bad Request. Response: %s", err_body or "(no body)")
-        else:
-            logger.warning("Gemini HTTP error: %s %s. Response: %s", e.code, getattr(e, "reason", e), err_body or "")
-        return None
-    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
-        logger.warning("Gemini request error: %s", getattr(e, "reason", e))
-        return None
+    last_err_body = ""
 
-    try:
-        candidates = data.get("candidates") or []
-        if not candidates:
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")[:800]
+            except Exception:
+                pass
+            last_err_body = err_body
+            if e.code == 429 and _retry_on_429 and attempt == 0:
+                wait_s = _parse_429_retry_seconds(err_body)
+                logger.warning("Gemini 429 (quota). Retrying after %.1fs.", wait_s)
+                time.sleep(wait_s)
+                continue
+            if e.code == 429:
+                logger.warning("Gemini 429 (quota), using fallback")
+            elif e.code == 404:
+                logger.warning(
+                    "Gemini 404 (model not found). Set GEMINI_MODEL in ai_service/.env to a valid model, e.g. gemini-2.5-flash or gemini-2.0-flash."
+                )
+            elif e.code == 403:
+                logger.warning("Gemini 403 (Forbidden). Check GEMINI_API_KEY and enable Generative Language API.")
+            elif e.code == 400:
+                logger.warning("Gemini 400 Bad Request. Response: %s", err_body or "(no body)")
+            else:
+                logger.warning("Gemini HTTP error: %s %s. Response: %s", e.code, getattr(e, "reason", e), err_body or "")
             return None
-        parts = candidates[0].get("content", {}).get("parts") or []
-        text_parts = [p.get("text", "") or "" for p in parts if isinstance(p, dict)]
-        result = "".join(text_parts).strip()
-        return result or None
-    except (IndexError, KeyError, TypeError):
-        return None
+        except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+            logger.warning("Gemini request error: %s", getattr(e, "reason", e))
+            return None
+
+        try:
+            candidates = data.get("candidates") or []
+            if not candidates:
+                return None
+            parts = candidates[0].get("content", {}).get("parts") or []
+            text_parts = [p.get("text", "") or "" for p in parts if isinstance(p, dict)]
+            result = "".join(text_parts).strip()
+            return result or None
+        except (IndexError, KeyError, TypeError):
+            return None
+
+    return None
 
 
 # ----- Tips -----
@@ -131,11 +182,16 @@ def get_tips(
 ) -> list[str]:
     """
     Получить 3–5 коротких советов от Gemini для метрик дашборда.
-    При ошибке или отсутствии ключа возвращает fallback.
+    Кэш 5 мин по (country, year, crop, округлённые метрики, lang). При 429 — один повтор после паузы.
     """
+    cache_key = f"tips:{country}:{year}:{crop}:{round(risk_score, 2)}:{round(p50, 1)}:{round(p10, 1)}:{round(p90, 1)}:{round(spread, 1)}:{risk_category}:{lang}"
+    cached, hit = _cache_get(cache_key)
+    if hit and isinstance(cached, list):
+        return cached
+
     api_key = _get_api_key()
     if not api_key:
-        logger.warning("Tips: GEMINI_API_KEY not set or empty. Set GEMINI_API_KEY in Render env (AI service). Using fallback.")
+        logger.warning("Tips: GEMINI_API_KEY not set or empty. Using fallback.")
         return _fallback_ai_tips()
 
     lang_instr = _lang_instruction(lang)
@@ -149,23 +205,32 @@ def get_tips(
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": GEMINI_MAX_OUTPUT_TIPS},
     }).encode("utf-8")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
+    req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
+    ctx = ssl.create_default_context()
 
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
-        req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT_TIPS, context=ctx) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        err_body = ""
+    for attempt in range(2):
         try:
-            err_body = e.read().decode("utf-8", errors="replace")[:500]
-        except Exception:
-            pass
-        logger.warning("Tips: Gemini HTTP %s %s. Body: %s. Using fallback.", e.code, getattr(e, "reason", ""), err_body or "(none)")
-        return _fallback_ai_tips()
-    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
-        logger.warning("Tips: Gemini request failed: %s. Using fallback.", getattr(e, "reason", e))
+            with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT_TIPS, context=ctx) as resp:
+                data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")[:800]
+            except Exception:
+                pass
+            if e.code == 429 and attempt == 0:
+                wait_s = _parse_429_retry_seconds(err_body)
+                logger.warning("Tips: Gemini 429. Retrying after %.1fs.", wait_s)
+                time.sleep(wait_s)
+                continue
+            logger.warning("Tips: Gemini HTTP %s. Body: %s. Using fallback.", e.code, err_body or "(none)")
+            return _fallback_ai_tips()
+        except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+            logger.warning("Tips: Gemini request failed: %s. Using fallback.", getattr(e, "reason", e))
+            return _fallback_ai_tips()
+        break
+    else:
         return _fallback_ai_tips()
 
     try:
@@ -181,7 +246,9 @@ def get_tips(
         return _fallback_ai_tips()
 
     lines = [s.strip() for s in re.split(r"[\n•\-]", text) if s.strip() and len(s.strip()) > 10]
-    return lines[:8] if lines else _fallback_ai_tips()
+    result = lines[:8] if lines else _fallback_ai_tips()
+    _cache_set(cache_key, result)
+    return result
 
 
 # ----- Recommend -----
@@ -272,19 +339,31 @@ def get_recommendation(data: dict[str, Any]) -> tuple[dict[str, str], bool]:
     from datetime import datetime
     if data.get("year") is None:
         data = {**data, "year": datetime.now().year}
+    # Кэш по округлённому контексту (5 мин), чтобы не жечь квоту при повторных запросах
+    ndvi = data.get("NDVI")
+    ndvi_anom = data.get("NDVI_anomaly")
+    key_str = f"rec:{data.get('region_name','')}:{data.get('crop','')}:{data.get('year')}:{round(ndvi, 2) if ndvi is not None else ''}:{round(ndvi_anom, 2) if ndvi_anom is not None else ''}:{data.get('risk_category','')}:{(data.get('language') or 'en')[:2]}"
+    cache_key = "rec:" + hashlib.sha256(key_str.encode()).hexdigest()[:32]
+    cached, hit = _cache_get(cache_key)
+    if hit and isinstance(cached, (list, tuple)) and len(cached) == 2:
+        return cached[0], cached[1]
+
     prompt = _build_recommend_prompt(data)
     text = _call_gemini(prompt, temperature=0.5, max_output_tokens=GEMINI_MAX_OUTPUT_RECOMMEND)
     if text and text.strip():
         try:
             parsed = _parse_recommend_response(text)
             if any(parsed.get(k) for k in ("riskAssessment", "immediateActions", "seasonalOutlook", "resourceOptimization")):
+                _cache_set(cache_key, (parsed, False))
                 return parsed, False
             logger.warning("Recommend: Gemini returned text but no sections parsed. Fallback to mock.")
         except Exception as e:
             logger.warning("Recommend parse error: %s", e)
     else:
         logger.warning("Recommend: no Gemini response (check API key, model, quota). Using fallback.")
-    return _mock_recommend(data), True
+    out = _mock_recommend(data), True
+    _cache_set(cache_key, out)  # кэшируем и fallback, чтобы не дёргать API при повторе
+    return out[0], out[1]
 
 
 # ----- Explain KPI (legacy, plain text) -----

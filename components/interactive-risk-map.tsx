@@ -203,6 +203,7 @@ interface KpiCardsData {
 
 export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const { t } = useLanguage()
+  const [isMobile, setIsMobile] = useState(false)
   
   // Filter states
   const [selectedCountry, setSelectedCountry] = useState<string>('UZB')
@@ -568,7 +569,17 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   const [yieldAnomalyByArea, setYieldAnomalyByArea] = useState<Record<string, number>>({})
   const [yieldAnomalyLoading, setYieldAnomalyLoading] = useState(false)
   const fetchKeyRef = useRef<string>('')
+  const kpiCarouselRef = useRef<HTMLDivElement>(null)
+  const kpiSlideRefs = useRef<Array<HTMLDivElement | null>>([])
+  const [kpiSlideIndex, setKpiSlideIndex] = useState(0)
   const CONCURRENCY = 4
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     if (selectedCountry !== 'UZB' || !currentGeoJSON?.features?.length) {
@@ -638,6 +649,47 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
     return () => abort.abort()
   }, [selectedCountry, selectedYear, currentGeoJSON, isShowingDistricts, apiBaseUrl])
 
+  const kpiSlides = [
+    {
+      title: 'Yield Anomaly (p50)',
+      value: kpiReady ? `${animP50}%` : '—',
+      valueClass: kpiP50 != null && kpiP50 < 0 ? 'text-red-600 dark:text-red-400' : kpiP50 != null && kpiP50 > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100',
+      sub: 'Mid-case anomaly',
+    },
+    {
+      title: 'Downside Risk (p10)',
+      value: kpiReady ? `${animP10}%` : '—',
+      valueClass: 'text-slate-800 dark:text-slate-100',
+      sub: 'Stress scenario',
+    },
+    {
+      title: 'High Risk Share',
+      value: kpiReady ? `${animHigh}%` : '—',
+      valueClass: 'text-red-600 dark:text-red-400',
+      sub: 'Portfolio concentration',
+    },
+    {
+      title: 'DSCR (p50 / p10)',
+      value: kpiReady ? `${animDscr50} / ${animDscr10}` : '—',
+      valueClass: 'text-slate-800 dark:text-slate-100',
+      sub: kpiCardsData?.dscr?.status ? `Status: ${kpiCardsData.dscr.status}` : 'Debt coverage',
+    },
+  ]
+
+  useEffect(() => {
+    if (!isMobile || kpiSlides.length <= 1) return
+    const timer = window.setInterval(() => {
+      setKpiSlideIndex((prev) => (prev + 1) % kpiSlides.length)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [isMobile, kpiSlides.length])
+
+  useEffect(() => {
+    if (!isMobile) return
+    const target = kpiSlideRefs.current[kpiSlideIndex]
+    target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [isMobile, kpiSlideIndex])
+
   return (
     <div className={`w-full h-full min-h-0 flex flex-col ${className ?? ''}`}>
       {/* Карта на весь экран; KPI карточки закомментированы ниже */}
@@ -680,8 +732,8 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             )}
         </div>
 
-        {/* 4 KPI карточки — справа, вертикально, стеклянный блок */}
-        <div className="absolute top-3 right-3 bottom-20 z-[100] flex flex-col items-end">
+        {/* Desktop KPI overlays */}
+        <div className="hidden md:flex absolute top-3 right-3 bottom-20 z-[100] flex-col items-end">
           <div className="flex flex-col gap-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 w-[280px]">
             {kpiCardsLoading ? (
               <>
@@ -812,8 +864,58 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           </div>
         </div>
 
-        {/* Кнопка «Назад» над фильтрами (только при просмотре районов) + фильтры; ширина кнопки = ширина блока фильтров */}
-        <div className="absolute bottom-3 left-3 z-[100] flex flex-col gap-2 items-start">
+        {/* Mobile KPI carousel: above bottom main menu */}
+        {isMobile && (
+          <div className="absolute left-0 right-0 bottom-[72px] z-[110] px-3">
+            <div
+              ref={kpiCarouselRef}
+              className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 scrollbar-none"
+              onScroll={(e) => {
+                const el = e.currentTarget
+                const children = Array.from(el.children) as HTMLElement[]
+                if (!children.length) return
+                const center = el.scrollLeft + el.clientWidth / 2
+                let closest = 0
+                let bestDist = Number.POSITIVE_INFINITY
+                children.forEach((child, idx) => {
+                  const childCenter = child.offsetLeft + child.clientWidth / 2
+                  const d = Math.abs(center - childCenter)
+                  if (d < bestDist) {
+                    bestDist = d
+                    closest = idx
+                  }
+                })
+                setKpiSlideIndex(closest)
+              }}
+            >
+              {kpiSlides.map((slide, idx) => (
+                <div
+                  key={slide.title}
+                  ref={(el) => { kpiSlideRefs.current[idx] = el }}
+                  className="min-w-[90%] snap-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/10"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{slide.title}</p>
+                  <p className={`text-4xl font-bold tabular-nums leading-tight ${slide.valueClass}`}>{slide.value}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{slide.sub}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-1.5">
+              {kpiSlides.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setKpiSlideIndex(idx)}
+                  className={`h-1.5 rounded-full transition-all ${idx === kpiSlideIndex ? 'w-5 bg-primary' : 'w-2 bg-slate-300 dark:bg-slate-600'}`}
+                  aria-label={`Go to KPI slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className={`absolute z-[100] flex flex-col gap-2 items-start ${isMobile ? 'bottom-[8px] left-2 right-2' : 'bottom-3 left-3'}`}>
           {isShowingDistricts && (
             <button
               type="button"
@@ -824,8 +926,8 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               Back to Regions
             </button>
           )}
-          <div className="flex flex-wrap gap-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5">
-            <div className="space-y-0.5 min-w-[120px]">
+          <div className={`flex flex-wrap gap-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 ${isMobile ? 'w-full' : ''}`}>
+            <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[120px]'}`}>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Country</label>
               <Select value={selectedCountry} onValueChange={setSelectedCountry}>
                 <SelectTrigger className="bg-card border-border h-9 w-full">
@@ -840,7 +942,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-0.5 min-w-[140px]">
+            <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[140px]'}`}>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Region</label>
               <Select value={selectedRegion} onValueChange={(value) => {
                 if (value === 'all') {
@@ -864,7 +966,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-0.5 min-w-[100px]">
+            <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[100px]'}`}>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Year</label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
                 <SelectTrigger className="bg-card border-border h-9 w-full">

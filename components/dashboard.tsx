@@ -555,6 +555,7 @@ interface ChartDataState {
 
 function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack: () => void }) {
   const { t } = useLanguage()
+  const [isMobile, setIsMobile] = useState(false)
   const [chartData, setChartData] = useState<ChartDataState>({
     ndviAnomalyTimeline: [],
     riskDistribution: [],
@@ -579,6 +580,13 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
       .then(setChartData)
       .catch(() => setChartData({ ndviAnomalyTimeline: [], riskDistribution: [], precipVsVegetation: [] }))
   }, [field.crop, field.district, field.region])
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const r = field.result
   const riskLabel = r.riskCategory === 'LOW' ? t('lowRisk') : r.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')
@@ -722,7 +730,7 @@ function FieldDetailView({ field, onBack }: { field: SavedFieldMetadata; onBack:
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} stroke="#3b82f6" domain={[0, 500]} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} stroke="#10B981" domain={[0, 1]} />
                   <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-                  <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
+                  {!isMobile && <Legend formatter={(value) => <span className="text-xs">{value}</span>} />}
                   <Bar yAxisId="left" dataKey="precipitation" fill="#3b82f6" name="Precipitation (mm)" radius={[4, 4, 0, 0]} fillOpacity={0.7} />
                   <Line yAxisId="right" type="monotone" dataKey="ndvi" stroke="#10B981" name="NDVI Index" strokeWidth={2} dot={{ r: 3 }} />
                 </ComposedChart>

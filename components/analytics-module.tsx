@@ -868,6 +868,7 @@ interface ResultsPhaseProps {
 function ResultsPhase({ result, onReset, language, loanParams, onAddField }: ResultsPhaseProps) {
   const { t } = useLanguage()
   const { user } = useAuth()
+  const [isMobile, setIsMobile] = useState(false)
   const [chartData, setChartData] = useState<ChartDataState>(emptyChartData)
   const [fieldAdded, setFieldAdded] = useState(false)
   const [modelCard, setModelCard] = useState<ModelCard>(DEFAULT_MODEL_CARD)
@@ -904,6 +905,13 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data: ModelCard) => setModelCard(data))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   // Prepare data for AI Recommendation
@@ -1295,7 +1303,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
                         borderRadius: '8px',
                       }}
                     />
-                    <Legend formatter={(value) => <span className="text-xs">{value}</span>} />
+                    {!isMobile && <Legend formatter={(value) => <span className="text-xs">{value}</span>} />}
                     <Bar 
                       yAxisId="left" 
                       dataKey="precipitation" 

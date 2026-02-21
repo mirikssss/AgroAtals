@@ -885,13 +885,59 @@ def _dscr_status(dscr_p50: float, dscr_p10: float) -> str:
 
 def _risk_share_from_category(risk_category: str) -> dict[str, Any]:
     """One unit: return high/moderate/low as 0 or 100. method='single-region proxy' — не портфельная доля."""
-    # TODO: replace with portfolio-weighted distribution when loans table exists
     cat = (risk_category or "").strip().lower()
     if cat == "high":
         return {"high": 100, "moderate": 0, "low": 0, "method": "single-region proxy"}
     if cat in ("moderate_high", "moderate_low"):
         return {"high": 0, "moderate": 100, "low": 0, "method": "single-region proxy"}
     return {"high": 0, "moderate": 0, "low": 100, "method": "single-region proxy"}
+
+
+def _portfolio_risk_share_from_df(df_region: pd.DataFrame, risk_category_aggregate: str) -> dict[str, Any]:
+    """
+    Доля высокого/умеренного/низкого риска по выбранному scope.
+    Если в df_region несколько строк (районы/области) — считаем распределение по данным (risk_category или
+    yield_anomaly_pct). Иначе — один юнит, возвращаем 100% в одной категории (как раньше).
+    """
+    n = len(df_region)
+    if n <= 1:
+        return _risk_share_from_category(risk_category_aggregate)
+
+    if "risk_category" in df_region.columns:
+        counts = df_region["risk_category"].fillna("").astype(str).str.strip().str.lower()
+        low = int((counts == "low").sum())
+        high = int(counts.isin(["high", "moderate_high"]).sum())
+        moderate = n - low - high
+    elif "yield_anomaly_pct" in df_region.columns:
+        col = df_region["yield_anomaly_pct"].astype(float).dropna()
+        n_valid = len(col)
+        if n_valid == 0:
+            return _risk_share_from_category(risk_category_aggregate)
+        low = int((col > -5).sum())
+        high = int((col < -15).sum())
+        moderate = n_valid - low - high
+        total = low + moderate + high
+        if total <= 0:
+            return _risk_share_from_category(risk_category_aggregate)
+        return {
+            "high": round(100 * high / total),
+            "moderate": round(100 * moderate / total),
+            "low": round(100 * low / total),
+            "method": "yield_anomaly_proxy",
+        }
+    else:
+        return _risk_share_from_category(risk_category_aggregate)
+
+    total = low + moderate + high
+    if total <= 0:
+        return _risk_share_from_category(risk_category_aggregate)
+
+    return {
+        "high": round(100 * high / total),
+        "moderate": round(100 * moderate / total),
+        "low": round(100 * low / total),
+        "method": "distribution",
+    }
 
 
 def _fetch_kpi_cards_uncached(
@@ -1039,7 +1085,7 @@ def _fetch_kpi_cards_uncached(
     return {
         "yield_anomaly_p50": {"value": round(p50, 1), "unit": "%", "trend": trend},
         "downside_risk_p10": {"value": round(p10, 1), "unit": "%", "min_p10": round(p10, 1)},
-        "portfolio_risk_share": _risk_share_from_category(risk_category),
+        "portfolio_risk_share": _portfolio_risk_share_from_df(df_region, risk_category),
         "dscr": {
             "p50": dscr_p50,
             "p10": dscr_p10,

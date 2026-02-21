@@ -663,9 +663,10 @@ export const centralAsianCountries: Country[] = [
   },
 ]
 
-// Years available for analysis
+// Years available for analysis (label for 'current' is localized and year is set in the component)
 export const availableYears = [
-  { value: 'current', label: 'Current (2025)' },
+  { value: 'current', label: 'Current' },
+  { value: '2025', label: '2025' },
   { value: '2024', label: '2024' },
   { value: '2023', label: '2023' },
   { value: '2022', label: '2022' },

@@ -202,7 +202,7 @@ interface KpiCardsData {
 }
 
 export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const [isMobile, setIsMobile] = useState(false)
   
   // Filter states
@@ -355,7 +355,6 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
   }, [selectedCountry])
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_DASHBOARD_API_URL || 'http://localhost:8000'
-  const { language } = useLanguage()
 
   const fetchDashboardMetrics = useCallback(async () => {
     const scope = selectedDistrict
@@ -651,28 +650,28 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
 
   const kpiSlides = [
     {
-      title: 'Yield Anomaly (p50)',
+      title: t('yieldAnomalyP50'),
       value: kpiReady ? `${animP50}%` : '—',
       valueClass: kpiP50 != null && kpiP50 < 0 ? 'text-red-600 dark:text-red-400' : kpiP50 != null && kpiP50 > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100',
-      sub: 'Mid-case anomaly',
+      sub: t('midCaseAnomaly'),
     },
     {
-      title: 'Downside Risk (p10)',
+      title: t('downsideRiskP10'),
       value: kpiReady ? `${animP10}%` : '—',
       valueClass: 'text-slate-800 dark:text-slate-100',
-      sub: 'Stress scenario',
+      sub: t('stressScenario'),
     },
     {
-      title: 'High Risk Share',
+      title: t('highRiskShare'),
       value: kpiReady ? `${animHigh}%` : '—',
       valueClass: 'text-red-600 dark:text-red-400',
-      sub: 'Portfolio concentration',
+      sub: t('portfolioConcentration'),
     },
     {
-      title: 'DSCR (p50 / p10)',
+      title: t('dscrP50P10'),
       value: kpiReady ? `${animDscr50} / ${animDscr10}` : '—',
       valueClass: 'text-slate-800 dark:text-slate-100',
-      sub: kpiCardsData?.dscr?.status ? `Status: ${kpiCardsData.dscr.status}` : 'Debt coverage',
+      sub: kpiCardsData?.dscr?.status ? `${kpiCardsData.dscr.status === 'stress' ? t('statusStress') : kpiCardsData.dscr.status === 'healthy' ? t('statusHealthy') : t('statusBorderline')}` : t('debtCoverage'),
     },
   ]
 
@@ -725,7 +724,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                     {currentCountry.name}
                   </h3>
                   <p className="text-sm text-muted-foreground max-w-md">
-                    Map data is currently available only for Uzbekistan.
+                    {t('mapDataOnlyUzbekistan')}
                   </p>
                 </div>
               </div>
@@ -744,32 +743,34 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             ) : (
               <>
                 <button type="button" onClick={() => handleKpiExplainClick('finance', 'yield_anomaly')} className="text-left rounded-xl hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors p-1 -m-1 cursor-pointer">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Yield Anomaly (p50)</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('yieldAnomalyP50')}</p>
                   <p className={`text-5xl font-bold tabular-nums leading-tight ${kpiP50 != null && kpiP50 < 0 ? 'text-red-600 dark:text-red-400' : kpiP50 != null && kpiP50 > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100'}`}>
                     {kpiReady ? `${animP50}%` : '—'}
                   </p>
                 </button>
                 <button type="button" onClick={() => handleKpiExplainClick('finance', 'downside_risk')} className="text-left rounded-xl hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors p-1 -m-1 cursor-pointer">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Downside Risk (p10)</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('downsideRiskP10')}</p>
                   <p className="text-5xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100">{kpiReady ? `${animP10}%` : '—'}</p>
                 </button>
                 <button type="button" onClick={() => handleKpiExplainClick('finance', 'high_risk_share')} className="text-left rounded-xl hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors p-1 -m-1 cursor-pointer">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">High Risk Share</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('highRiskShare')}</p>
                   <p className="text-5xl font-bold tabular-nums leading-tight text-red-600 dark:text-red-400">{kpiReady ? `${animHigh}%` : '—'}</p>
                 </button>
                 <button type="button" onClick={() => handleKpiExplainClick('finance', 'dscr')} className="text-left rounded-xl hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors p-1 -m-1 cursor-pointer">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">DSCR (p50 / p10)</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('dscrP50P10')}</p>
                   <p className="text-5xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100">
                     {kpiReady ? `${animDscr50} / ${animDscr10}` : '—'}
                   </p>
                   {kpiCardsData?.dscr?.status && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 capitalize mt-0.5">{kpiCardsData.dscr.status}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 capitalize mt-0.5">
+                      {kpiCardsData.dscr.status === 'stress' ? t('statusStress') : kpiCardsData.dscr.status === 'healthy' ? t('statusHealthy') : kpiCardsData.dscr.status === 'borderline' ? t('statusBorderline') : kpiCardsData.dscr.status}
+                    </p>
                   )}
                 </button>
                 {kpiCardsError && (
                   <div className="pt-2 border-t border-slate-200/60 dark:border-slate-600/60">
                     <p className="text-xs text-red-600 dark:text-red-400 truncate" title={kpiCardsError}>{kpiCardsError}</p>
-                    <button type="button" onClick={() => fetchKpiCards()} className="mt-1 text-xs font-medium text-primary hover:underline">Повторить</button>
+                    <button type="button" onClick={() => fetchKpiCards()} className="mt-1 text-xs font-medium text-primary hover:underline">{t('retry')}</button>
                   </div>
                 )}
               </>
@@ -777,10 +778,10 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           </div>
           <div className="mt-3 w-[280px] bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Satellite Monitoring</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('satelliteMonitoring')}</p>
               <div className="flex items-center gap-1">
                 {dataConfidence === 'low' && (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Low confidence" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title={t('lowConfidence')} />
                 )}
                 <Info className="w-3.5 h-3.5 text-slate-400" title={satelliteMetaTooltip} />
               </div>
@@ -792,14 +793,14 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </div>
             ) : satelliteNoData ? (
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                No satellite baseline available
+                {t('noSatelliteBaseline')}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => handleKpiExplainClick('satellite', 'vegetation_health')} className="text-left space-y-1 rounded-xl hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors p-1 -m-1 cursor-pointer">
                   <div className="flex items-center gap-1.5">
                     <Leaf className={`w-4 h-4 text-emerald-600 ${vegStatus && vegStatus !== 'good' ? 'animate-pulse' : ''}`} />
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Vegetation</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('vegetation')}</p>
                   </div>
                   <p className="text-2xl font-bold tabular-nums text-emerald-600">
                     {vegValue != null ? vegValue.toFixed(2) : '—'}
@@ -810,7 +811,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                     vegStatus === 'poor' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
                     'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
                   }`}>
-                    {vegStatus ?? 'n/a'}
+                    {vegStatus === 'good' ? t('statusGood') : vegStatus === 'watch' ? t('statusWatch') : vegStatus === 'poor' ? t('statusPoor') : vegStatus ?? 'n/a'}
                   </span>
                   <div className="h-1.5 w-full rounded-full bg-slate-200/60 dark:bg-slate-700/60 overflow-hidden">
                     <div
@@ -825,7 +826,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                   )}
                   <div className="flex items-center gap-1.5 relative z-10">
                     <Flame className={`w-4 h-4 ${stressLevel === 'high' ? 'text-red-500' : 'text-slate-400'}`} />
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Stress</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('stressLabel')}</p>
                   </div>
                   <p className="text-2xl font-bold tabular-nums relative z-10 text-slate-800 dark:text-slate-100">
                     {stressValue != null ? stressValue.toFixed(2) : '—'}
@@ -836,7 +837,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                     stressLevel === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
                     'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
                   }`}>
-                    {stressLevel ?? 'n/a'}
+                    {stressLevel === 'low' ? t('statusLow') : stressLevel === 'medium' ? t('statusMedium') : stressLevel === 'high' ? t('statusHigh') : stressLevel ?? 'n/a'}
                   </span>
                   <div className="flex items-center gap-1.5 pt-0.5 relative z-10">
                     <span className={`p-1 rounded-full ${stressComponents?.drought ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-300'}`} title="Drought">
@@ -858,7 +859,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 onClick={() => console.log('[Satellite KPI meta]', kpiCardsData?.meta)}
                 className="mt-2 text-[10px] text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               >
-                Debug meta
+                {t('debugMeta')}
               </button>
             )}
           </div>
@@ -928,7 +929,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
           )}
           <div className={`flex flex-wrap gap-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 ${isMobile ? 'w-full' : ''}`}>
             <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[120px]'}`}>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Country</label>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('filterCountry')}</label>
               <Select value={selectedCountry} onValueChange={setSelectedCountry}>
                 <SelectTrigger className="bg-card border-border h-9 w-full">
                   <SelectValue />
@@ -943,7 +944,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </Select>
             </div>
             <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[140px]'}`}>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Region</label>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('filterRegion')}</label>
               <Select value={selectedRegion} onValueChange={(value) => {
                 if (value === 'all') {
                   handleBackToRegions()
@@ -957,7 +958,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border z-[200]" side="top" sideOffset={4} position="popper">
-                  <SelectItem value="all">All Regions</SelectItem>
+                  <SelectItem value="all">{t('allRegions')}</SelectItem>
                   {regionsList.map((region) => (
                     <SelectItem key={region.name} value={region.name}>
                       {region.name}
@@ -967,7 +968,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </Select>
             </div>
             <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[100px]'}`}>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Year</label>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('filterYear')}</label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
                 <SelectTrigger className="bg-card border-border h-9 w-full">
                   <SelectValue />
@@ -975,7 +976,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 <SelectContent className="bg-card border-border z-[200]" side="top" sideOffset={4} position="popper">
                   {availableYears.map((year) => (
                     <SelectItem key={year.value} value={year.value}>
-                      {year.label}
+                      {year.value === 'current' ? t('yearCurrent').replace('{{year}}', String(new Date().getFullYear())) : year.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1018,7 +1019,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             <>
               {explainIsMock && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-                  Справочное объяснение (ИИ недоступен). Задайте GEMINI_API_KEY в .env.local для ответов от ИИ.
+                  {t('explainKpiFallback')}
                 </p>
               )}
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">

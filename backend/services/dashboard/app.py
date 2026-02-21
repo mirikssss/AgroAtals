@@ -896,11 +896,33 @@ def _risk_share_from_category(risk_category: str) -> dict[str, Any]:
 def _portfolio_risk_share_from_df(df_region: pd.DataFrame, risk_category_aggregate: str) -> dict[str, Any]:
     """
     Доля высокого/умеренного/низкого риска по выбранному scope.
-    Если в df_region несколько строк (районы/области) — считаем распределение по данным (risk_category или
-    yield_anomaly_pct). Иначе — один юнит, возвращаем 100% в одной категории (как раньше).
+    — Несколько строк: распределение по risk_category или yield_anomaly_pct (high < -15%, low > -5%).
+    — Одна строка (город/район): по yield_anomaly_pct из датасета, если есть, иначе по risk_category от Risk.
     """
     n = len(df_region)
-    if n <= 1:
+    if n == 1:
+        # Один юнит (город/район): не показывать всегда 0% high — брать категорию из данных строки
+        if "yield_anomaly_pct" in df_region.columns:
+            val = df_region["yield_anomaly_pct"].iloc[0]
+            try:
+                v = float(val)
+                if not pd.isna(v):
+                    if v < -15:
+                        return {"high": 100, "moderate": 0, "low": 0, "method": "single-unit anomaly"}
+                    if v > -5:
+                        return {"high": 0, "moderate": 0, "low": 100, "method": "single-unit anomaly"}
+                    return {"high": 0, "moderate": 100, "low": 0, "method": "single-unit anomaly"}
+            except (TypeError, ValueError):
+                pass
+        if "risk_category" in df_region.columns:
+            cat = (df_region["risk_category"].iloc[0] or "").strip().lower()
+            if cat in ("high", "moderate_high"):
+                return {"high": 100, "moderate": 0, "low": 0, "method": "single-unit category"}
+            if cat in ("moderate_low", "moderate"):
+                return {"high": 0, "moderate": 100, "low": 0, "method": "single-unit category"}
+        return _risk_share_from_category(risk_category_aggregate)
+
+    if n == 0:
         return _risk_share_from_category(risk_category_aggregate)
 
     if "risk_category" in df_region.columns:

@@ -45,7 +45,21 @@ import {
   ArrowRight,
   MapPin,
   Download,
+  MoreVertical,
+  SlidersHorizontal,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogHeader,
+} from '@/components/ui/dialog'
 import { useLanguage } from '@/lib/language-context'
 import { 
   useAIRecommendation, 
@@ -404,121 +418,160 @@ const glassCard =
 
 function InputPhase({ loanParams, onInputChange, onAreaDrawn, onAnalyze, analysisError }: InputPhaseProps) {
   const { t } = useLanguage()
+  const [formOpen, setFormOpen] = useState(false)
   const isFormValid = loanParams.drawnArea && loanParams.loanAmount && loanParams.hectares
+
+  const formContent = (
+    <>
+      <div>
+        <h2 className="text-lg font-bold text-foreground">{t('creditRiskAnalytics')}</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">{t('enterLoanParamsDraw')}</p>
+      </div>
+      <div className="grid grid-cols-1 grid-rows-[1fr_1fr] gap-4 min-h-[176px]">
+        <div className="space-y-2 min-h-0 flex flex-col">
+          <p className="text-xs font-semibold text-foreground">{t('loanParameters')}</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-col min-h-[52px]">
+              <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('loanAmount')}</label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={loanParams.loanAmount}
+                onChange={(e) => onInputChange('loanAmount', e.target.value)}
+                placeholder="45K"
+                className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+              />
+            </div>
+            <div className="flex flex-col min-h-[52px]">
+              <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('interestRate')}</label>
+              <Input
+                type="number"
+                step="0.1"
+                value={loanParams.interestRate}
+                onChange={(e) => onInputChange('interestRate', e.target.value)}
+                placeholder="12"
+                className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+              />
+            </div>
+            <div className="flex flex-col min-h-[52px]">
+              <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('termYears')}</label>
+              <Input
+                type="number"
+                value={loanParams.termYears}
+                onChange={(e) => onInputChange('termYears', e.target.value)}
+                placeholder="5"
+                className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2 min-h-0 flex flex-col">
+          <p className="text-xs font-semibold text-foreground">{t('drawAgriculturalArea')}</p>
+          {loanParams.drawnArea?.bounds && (
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <MapPin className="w-3 h-3 text-[#10B981]" />
+              <span>
+                {((loanParams.drawnArea.bounds.north + loanParams.drawnArea.bounds.south) / 2).toFixed(4)}°N,{' '}
+                {((loanParams.drawnArea.bounds.east + loanParams.drawnArea.bounds.west) / 2).toFixed(4)}°E
+              </span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('cropType')}</label>
+              <Select value={loanParams.crop} onValueChange={(v) => onInputChange('crop', v)}>
+                <SelectTrigger className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  <SelectItem value="cotton">{t('cropCotton')}</SelectItem>
+                  <SelectItem value="wheat">{t('cropWheat')}</SelectItem>
+                  <SelectItem value="rice">{t('cropRice')}</SelectItem>
+                  <SelectItem value="corn">{t('cropCorn')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('areaHectares')}</label>
+              <Input
+                type="number"
+                value={loanParams.hectares}
+                onChange={(e) => onInputChange('hectares', e.target.value)}
+                placeholder="150"
+                className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      {analysisError && (
+        <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50/80 dark:bg-red-950/40 p-2 text-[10px] text-red-800 dark:text-red-200">
+          <strong>{t('analysisUnavailable')}</strong>
+          <p className="mt-0.5">{analysisError}</p>
+        </div>
+      )}
+    </>
+  )
+
+  const runButton = (
+    <Button
+      onClick={onAnalyze}
+      disabled={!isFormValid}
+      className="w-full py-3 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+    >
+      <Satellite className="w-3.5 h-3.5 mr-1.5" />
+      {t('runAnalysis')}
+      <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+    </Button>
+  )
 
   return (
     <div className="h-full min-h-0 flex flex-col relative">
-      {/* Карта на весь экран: обёртка flex, чтобы DrawMap (flex-1) получил высоту */}
       <div className="absolute inset-0 flex flex-col min-h-0">
         <DrawMap onAreaDrawn={onAreaDrawn} fillHeight />
       </div>
 
-      {/* Форма — плавающая стеклянная карточка слева, компактная фиксированная ширина */}
+      {/* Desktop: плавающая форма слева */}
       <aside
-        className={`absolute left-4 top-4 z-10 w-[300px] max-w-[calc(100vw-2rem)] ${glassCard} p-4 flex flex-col gap-4`}
+        className={`absolute left-4 top-4 z-10 w-[300px] max-w-[calc(100vw-2rem)] ${glassCard} p-4 flex flex-col gap-4 max-md:hidden`}
       >
-        <div>
-          <h2 className="text-lg font-bold text-foreground">{t('creditRiskAnalytics')}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{t('enterLoanParamsDraw')}</p>
-        </div>
-
-        {/* Две секции одной высоты через grid */}
-        <div className="grid grid-cols-1 grid-rows-[1fr_1fr] gap-4 min-h-[176px]">
-          <div className="space-y-2 min-h-0 flex flex-col">
-            <p className="text-xs font-semibold text-foreground">{t('loanParameters')}</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex flex-col min-h-[52px]">
-                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('loanAmount')}</label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  value={loanParams.loanAmount}
-                  onChange={(e) => onInputChange('loanAmount', e.target.value)}
-                  placeholder="45K"
-                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
-                />
-              </div>
-              <div className="flex flex-col min-h-[52px]">
-                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('interestRate')}</label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={loanParams.interestRate}
-                  onChange={(e) => onInputChange('interestRate', e.target.value)}
-                  placeholder="12"
-                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
-                />
-              </div>
-              <div className="flex flex-col min-h-[52px]">
-                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 shrink-0">{t('termYears')}</label>
-                <Input
-                  type="number"
-                  value={loanParams.termYears}
-                  onChange={(e) => onInputChange('termYears', e.target.value)}
-                  placeholder="5"
-                  className="h-8 mt-auto text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2 min-h-0 flex flex-col">
-            <p className="text-xs font-semibold text-foreground">{t('drawAgriculturalArea')}</p>
-            {loanParams.drawnArea?.bounds && (
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <MapPin className="w-3 h-3 text-[#10B981]" />
-                <span>
-                  {((loanParams.drawnArea.bounds.north + loanParams.drawnArea.bounds.south) / 2).toFixed(4)}°N,{' '}
-                  {((loanParams.drawnArea.bounds.east + loanParams.drawnArea.bounds.west) / 2).toFixed(4)}°E
-                </span>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('cropType')}</label>
-                <Select value={loanParams.crop} onValueChange={(v) => onInputChange('crop', v)}>
-                  <SelectTrigger className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="cotton">{t('cropCotton')}</SelectItem>
-                    <SelectItem value="wheat">{t('cropWheat')}</SelectItem>
-                    <SelectItem value="rice">{t('cropRice')}</SelectItem>
-                    <SelectItem value="corn">{t('cropCorn')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">{t('areaHectares')}</label>
-                <Input
-                  type="number"
-                  value={loanParams.hectares}
-                  onChange={(e) => onInputChange('hectares', e.target.value)}
-                  placeholder="150"
-                  className="h-8 text-sm bg-white/60 dark:bg-slate-800/60 border-border/50"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {analysisError && (
-          <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50/80 dark:bg-red-950/40 p-2 text-[10px] text-red-800 dark:text-red-200">
-            <strong>{t('analysisUnavailable')}</strong>
-            <p className="mt-0.5">{analysisError}</p>
-          </div>
-        )}
-
-        <Button
-          onClick={onAnalyze}
-          disabled={!isFormValid}
-          className="w-full py-3 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Satellite className="w-3.5 h-3.5 mr-1.5" />
-          {t('runAnalysis')}
-          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-        </Button>
+        {formContent}
+        {runButton}
       </aside>
+
+      {/* Mobile: кнопка «Параметры» открывает форму в диалоге, карта не загораживается */}
+      <div className="md:hidden absolute bottom-4 right-4 z-20">
+        <Button
+          size="lg"
+          className="rounded-full h-12 w-12 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => setFormOpen(true)}
+          title={t('creditRiskAnalytics')}
+        >
+          <SlidersHorizontal className="w-5 h-5" />
+        </Button>
+      </div>
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-md:max-w-[calc(100%-2rem)] max-md:max-h-[90vh] max-md:overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('creditRiskAnalytics')}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 mt-2">
+            {formContent}
+            <Button
+              onClick={() => {
+                onAnalyze()
+                setFormOpen(false)
+              }}
+              disabled={!isFormValid}
+              className="w-full py-3 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Satellite className="w-3.5 h-3.5 mr-1.5" />
+              {t('runAnalysis')}
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -969,7 +1022,8 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
             <h2 className="text-2xl font-bold text-foreground">{result.assetName}</h2>
             <p className="text-muted-foreground">{result.region} • {result.district}</p>
           </div>
-          <div className="flex items-center gap-3">
+          {/* Desktop: all buttons visible */}
+          <div className="hidden md:flex items-center gap-3">
             <Badge className={`text-sm font-medium px-5 py-2.5 h-10 flex items-center ${
               result.riskCategory === 'LOW'
                 ? 'bg-[#D1FAE5] text-[#10B981] dark:bg-[#10B981]/20 dark:text-[#34D399]'
@@ -982,7 +1036,6 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
               {result.riskCategory === 'HIGH' && <AlertTriangle className="w-4 h-4 mr-1.5" />}
               {t('fieldRisk')}: {result.riskCategory === 'LOW' ? t('lowRisk') : result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
             </Badge>
-            
             <Button
               variant="outline"
               onClick={() => downloadReportPdf(result, modelCard, { userName, centerLat, centerLng, crop }, aiRecommendation.recommendation)}
@@ -1021,6 +1074,64 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
             <Button variant="outline" onClick={onReset} className="h-10 px-5">
               {t('newAnalysis')}
             </Button>
+          </div>
+          {/* Mobile: Badge + dropdown with actions */}
+          <div className="flex md:hidden items-center gap-2">
+            <Badge className={`text-sm font-medium px-3 py-2 h-9 flex items-center ${
+              result.riskCategory === 'LOW'
+                ? 'bg-[#D1FAE5] text-[#10B981] dark:bg-[#10B981]/20 dark:text-[#34D399]'
+                : result.riskCategory === 'MODERATE'
+                ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
+                : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+            }`} title="Crop/field risk from model">
+              {result.riskCategory === 'LOW' && <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+              {result.riskCategory === 'MODERATE' && <AlertTriangle className="w-3.5 h-3.5 mr-1" />}
+              {result.riskCategory === 'HIGH' && <AlertTriangle className="w-3.5 h-3.5 mr-1" />}
+              {result.riskCategory === 'LOW' ? t('lowRisk') : result.riskCategory === 'MODERATE' ? t('moderateRisk') : t('highRisk')}
+            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9 shrink-0">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  onSelect={() => downloadReportPdf(result, modelCard, { userName, centerLat, centerLng, crop }, aiRecommendation.recommendation)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  {t('downloadReportPdf')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    const url = new URL(`${DASHBOARD_API_URL}/dashboard/historical-csv`)
+                    url.searchParams.set('country', 'UZB')
+                    url.searchParams.set('crop', crop)
+                    url.searchParams.set('scope', 'country')
+                    if (bounds) {
+                      url.searchParams.set('center_lat', centerLat)
+                      url.searchParams.set('center_lng', centerLng)
+                    }
+                    fetch(url.toString())
+                      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error('CSV failed'))))
+                      .then((blob) => {
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(blob)
+                        a.download = 'historical_data.csv'
+                        a.click()
+                        URL.revokeObjectURL(a.href)
+                      })
+                      .catch(() => {})
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  {t('downloadHistoricalData')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onReset()}>
+                  {t('newAnalysis')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

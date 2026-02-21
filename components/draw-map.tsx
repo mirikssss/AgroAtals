@@ -856,12 +856,12 @@ export function DrawMap({
         )}
       </div>
 
-      {/* Instructions — при fillHeight плавающая стеклянная карточка внизу */}
+      {/* Instructions / legends — при fillHeight на мобилке скрыты, чтобы не занимать место */}
       <div
         className={
           fillHeight
-            ? `absolute bottom-4 left-4 right-4 z-10 p-3 text-xs text-muted-foreground rounded-2xl ${glassCard}`
-            : 'bg-gray-50 dark:bg-gray-800/50 p-3 text-xs text-muted-foreground border-t border-border/50'
+            ? `absolute bottom-4 left-4 right-4 z-10 p-3 text-xs text-muted-foreground rounded-2xl ${glassCard} max-md:hidden`
+            : 'bg-gray-50 dark:bg-gray-800/50 p-3 text-xs text-muted-foreground border-t border-border/50 max-md:hidden'
         }
       >
         <div className="flex items-center gap-4 flex-wrap">

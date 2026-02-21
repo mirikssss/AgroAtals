@@ -733,7 +733,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
 
         {/* Desktop KPI overlays */}
         <div className="hidden md:flex absolute top-3 right-3 bottom-20 z-[100] flex-col items-end">
-          <div className="flex flex-col gap-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 w-[280px]">
+          <div className="flex flex-col gap-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.15),0_12px_40px_8px_rgba(0,0,0,0.2)] w-[280px]">
             {kpiCardsLoading ? (
               <>
                 {[1, 2, 3, 4].map((i) => (
@@ -776,7 +776,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
               </>
             )}
           </div>
-          <div className="mt-3 w-[280px] bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5">
+          <div className="mt-3 w-[280px] bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.15),0_12px_40px_8px_rgba(0,0,0,0.2)]">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('satelliteMonitoring')}</p>
               <div className="flex items-center gap-1">
@@ -893,7 +893,7 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
                 <div
                   key={slide.title}
                   ref={(el) => { kpiSlideRefs.current[idx] = el }}
-                  className="min-w-[90%] snap-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/10"
+                  className="min-w-[90%] snap-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-[0_4px_24px_4px_rgba(0,0,0,0.08),0_12px_40px_8px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.2),0_12px_40px_8px_rgba(0,0,0,0.25)]"
                 >
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{slide.title}</p>
                   <p className={`text-4xl font-bold tabular-nums leading-tight ${slide.valueClass}`}>{slide.value}</p>
@@ -921,13 +921,13 @@ export function InteractiveRiskMap({ className }: InteractiveRiskMapProps) {
             <button
               type="button"
               onClick={handleBackToRegions}
-              className="w-full flex items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5"
+              className="w-full flex items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.15),0_12px_40px_8px_rgba(0,0,0,0.2)]"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" />
               Back to Regions
             </button>
           )}
-          <div className={`flex flex-wrap gap-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-lg shadow-black/5 ${isMobile ? 'w-full' : ''}`}>
+          <div className={`flex flex-wrap gap-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/40 dark:border-slate-600/40 shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.15),0_12px_40px_8px_rgba(0,0,0,0.2)] ${isMobile ? 'w-full' : ''}`}>
             <div className={`space-y-0.5 ${isMobile ? 'min-w-0 flex-1' : 'min-w-[120px]'}`}>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('filterCountry')}</label>
               <Select value={selectedCountry} onValueChange={setSelectedCountry}>

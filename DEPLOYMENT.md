@@ -54,6 +54,26 @@ RISK_SERVICE_URL=http://127.0.0.1:8002
 AI_SERVICE_URL=http://127.0.0.1:8001
 ```
 
+### 2.1. API Sentinel (Copernicus Data Space) — только в Dashboard
+
+Спутниковые снимки (Satellite Evidence, таймлапс Sentinel-2) запрашиваются **в сервисе Dashboard** из `backend/services/dashboard/satellite.py`. Ни Risk, ни AI к Sentinel не обращаются.
+
+**На проде** задайте переменные окружения **у того же инстанса, где крутится Dashboard** (порт 8000):
+
+- `CDS_CLIENT_ID` — Client ID из [Copernicus Data Space](https://dataspace.copernicus.eu/) (OAuth2).
+- `CDS_CLIENT_SECRET` — Client Secret.
+
+Альтернативные имена (если уже используете): `SENTINEL_HUB_CLIENT_ID` и `SENTINEL_HUB_CLIENT_SECRET` — они тоже подхватываются.
+
+Пример для `backend/services/dashboard/.env`:
+
+```
+CDS_CLIENT_ID=ваш-client-id
+CDS_CLIENT_SECRET=ваш-client-secret
+```
+
+Без этих переменных эндпоинты `/dashboard/satellite/timelapse` и `/dashboard/satellite/preview` вернут ошибку «Satellite credentials not configured».
+
 ### 3. Проверка после запуска
 
 1. **При старте Dashboard** в консоли должны появиться строки:

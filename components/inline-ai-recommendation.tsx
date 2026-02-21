@@ -167,30 +167,30 @@ export function AIRecommendationContent({
       `}
     >
       <Card className={`
-        border-[#10B981]/30 shadow-lg overflow-hidden
+        border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden
         transition-all duration-500
         ${isOpen ? 'animate-in slide-in-from-top-4 fade-in' : ''}
       `}>
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#10B981] to-[#059669] p-4 flex items-center justify-between">
+        {/* Header — нейтральный, деловой */}
+        <div className="bg-slate-800 dark:bg-slate-900 p-4 flex items-center justify-between">
           <div className="flex items-center gap-3 text-white">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-lg bg-slate-700 dark:bg-slate-800 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-slate-200" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">AI Agricultural Advisor</h3>
-              <p className="text-white/90 text-sm">
-                {regionData.region_name || 'Region'}, {regionData.country || 'Uzbekistan'} • {regionData.crop || 'Crop'}
+              <h3 className="text-base font-semibold tracking-tight text-slate-100">AI Agricultural Advisor</h3>
+              <p className="text-slate-400 text-sm mt-0.5">
+                {regionData.region_name || 'Region'}, {regionData.country || 'Uzbekistan'} — {regionData.crop || 'Crop'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               onClick={onRefresh}
               disabled={loading}
               variant="ghost"
               size="sm"
-              className="text-white hover:text-white hover:bg-white/20"
+              className="text-slate-400 hover:text-white hover:bg-slate-700/50"
             >
               <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -199,7 +199,7 @@ export function AIRecommendationContent({
               onClick={onClose}
               variant="ghost"
               size="icon"
-              className="text-white hover:text-white hover:bg-white/20 rounded-lg"
+              className="text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg"
             >
               <X className="w-5 h-5" />
             </Button>
@@ -207,7 +207,7 @@ export function AIRecommendationContent({
         </div>
 
         {/* Content */}
-        <div className="p-6 bg-white dark:bg-gray-900">
+        <div className="p-6 bg-slate-50/50 dark:bg-slate-900/50">
           {loading && <LoadingState />}
           {error && <ErrorState error={error} onRetry={onRefresh} />}
           {recommendation && !loading && (
@@ -219,18 +219,18 @@ export function AIRecommendationContent({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
-          <p className="text-xs text-gray-400">
-            Powered by Gemini AI • Satellite data verified
+        <div className="border-t border-slate-200 dark:border-slate-700 p-3 bg-slate-100/80 dark:bg-slate-800/50 flex justify-between items-center">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Powered by Gemini AI · Satellite data verified
           </p>
           <Button
             onClick={onClose}
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="text-gray-600 hover:text-gray-800"
+            className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
           >
             Collapse
-            <ChevronUp className="w-4 h-4 ml-1" />
+            <ChevronUp className="w-3.5 h-3.5 ml-1" />
           </Button>
         </div>
       </Card>
@@ -462,41 +462,19 @@ interface SectionProps {
 }
 
 function Section({ icon, title, variant, children, className = '', style }: SectionProps) {
-  const variantClasses = {
-    brand: {
-      border: 'border-[#10B981]',
-      bg: 'bg-[#D1FAE5]/50 dark:bg-[#10B981]/10',
-      icon: 'text-[#10B981]',
-    },
-    red: {
-      border: 'border-red-500',
-      bg: 'bg-red-50/50 dark:bg-red-950/30',
-      icon: 'text-red-500',
-    },
-    blue: {
-      border: 'border-blue-500',
-      bg: 'bg-blue-50/50 dark:bg-blue-950/30',
-      icon: 'text-blue-500',
-    },
-    cyan: {
-      border: 'border-cyan-500',
-      bg: 'bg-cyan-50/50 dark:bg-cyan-950/30',
-      icon: 'text-cyan-500',
-    },
-  }
-
-  const classes = variantClasses[variant]
-
+  // Единый нейтральный стиль секций — деловой отчёт, без ярких акцентов
   return (
     <div 
-      className={`border-l-4 ${classes.border} ${classes.bg} rounded-r-lg p-4 h-full ${className}`}
+      className={`border-l-[3px] border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800/40 rounded-r-md p-4 h-full border border-slate-200/80 dark:border-slate-700/80 ${className}`}
       style={style}
     >
       <div className="flex items-center gap-2 mb-2">
-        <span className={classes.icon}>{icon}</span>
-        <h3 className="font-semibold text-gray-900 dark:text-white">{title}</h3>
+        <span className="text-slate-500 dark:text-slate-400 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 uppercase tracking-wide">{title}</h3>
       </div>
-      {children}
+      <div className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
+        {children}
+      </div>
     </div>
   )
 }

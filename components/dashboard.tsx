@@ -961,7 +961,7 @@ export function Dashboard({ onNavigateToLanding }: { onNavigateToLanding?: () =>
         )}
         {activeTab === 'dashboard' && <DashboardOverview />}
         {(activeTab === 'portfolio' || activeTab === 'analytics' || activeTab === 'fields') && (
-          <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-5 md:p-6 lg:p-8">
+          <div className={`h-full min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-5 md:p-6 lg:p-8 ${isMobile ? 'pr-14' : ''}`}>
             {activeTab === 'portfolio' && <PortfolioSection />}
             {activeTab === 'analytics' && <AnalyticsModule onFieldAdded={() => setActiveTab('fields')} />}
             {activeTab === 'fields' && <FieldsSection />}

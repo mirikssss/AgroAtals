@@ -285,12 +285,12 @@ function LoadingState() {
   }, [])
 
   return (
-    <div className="flex flex-col items-center justify-center py-8">
-      <div className="w-16 h-16 rounded-full bg-[#D1FAE5] flex items-center justify-center mb-4">
-        <Loader2 className="w-8 h-8 text-[#10B981] animate-spin" />
+    <div className="flex flex-col items-center justify-center py-10">
+      <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center mb-4">
+        <Loader2 className="w-6 h-6 text-slate-600 dark:text-slate-300 animate-spin" />
       </div>
-      <p className="text-gray-700 dark:text-gray-300 font-medium">Analyzing satellite data...</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Generating personalized recommendations</p>
+      <p className="text-slate-700 dark:text-slate-200 font-medium text-sm">Analyzing satellite data...</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Generating recommendations</p>
       
       <div className="mt-6 space-y-2 w-full max-w-xs">
         {steps.map((step, i) => (
@@ -300,11 +300,11 @@ function LoadingState() {
               i <= currentStep ? 'opacity-100' : 'opacity-40'
             }`}
           >
-            <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
-              i <= currentStep ? 'bg-[#10B981]' : 'bg-gray-300'
-            } ${i === currentStep ? 'animate-pulse scale-125' : ''}`} />
-            <span className={i <= currentStep ? 'text-[#10B981]' : 'text-gray-500'}>{step}</span>
-            {i < currentStep && <CheckCircle className="w-3 h-3 text-[#10B981] ml-auto" />}
+            <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+              i <= currentStep ? 'bg-slate-600 dark:bg-slate-400' : 'bg-slate-300 dark:bg-slate-600'
+            } ${i === currentStep ? 'animate-pulse' : ''}`} />
+            <span className={i <= currentStep ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500'}>{step}</span>
+            {i < currentStep && <CheckCircle className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ml-auto" />}
           </div>
         ))}
       </div>
@@ -435,18 +435,18 @@ function RecommendationDisplay({
       )}
 
       {/* Data Summary */}
-      <Card className="bg-gray-50 dark:bg-gray-800 border-0 p-4 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '400ms' }}>
-        <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
-          <Target className="w-4 h-4" />
-          Based on satellite data:
+      <div className="border border-slate-200 dark:border-slate-600/60 rounded-lg bg-slate-100/60 dark:bg-slate-800/40 p-4 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '400ms' }}>
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
+          <Target className="w-3.5 h-3.5" />
+          Based on satellite data
         </h4>
         <div className="grid grid-cols-4 gap-4 text-center">
-          <Stat label="NDVI" value={regionData.NDVI?.toFixed(2) || 'N/A'} />
-          <Stat label="Anomaly" value={regionData.NDVI_anomaly ? `${(regionData.NDVI_anomaly * 100).toFixed(0)}%` : 'N/A'} />
-          <Stat label="Precip" value={regionData.precipitation_total_mm ? `${regionData.precipitation_total_mm.toFixed(0)}mm` : 'N/A'} />
-          <Stat label="Temp" value={regionData.temperature_mean_C ? `${regionData.temperature_mean_C.toFixed(1)}°C` : 'N/A'} />
+          <Stat label="NDVI" value={regionData.NDVI?.toFixed(2) || '—'} />
+          <Stat label="Anomaly" value={regionData.NDVI_anomaly ? `${(regionData.NDVI_anomaly * 100).toFixed(0)}%` : '—'} />
+          <Stat label="Precip" value={regionData.precipitation_total_mm ? `${regionData.precipitation_total_mm.toFixed(0)} mm` : '—'} />
+          <Stat label="Temp" value={regionData.temperature_mean_C ? `${regionData.temperature_mean_C.toFixed(1)} °C` : '—'} />
         </div>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -483,8 +483,8 @@ function Section({ icon, title, variant, children, className = '', style }: Sect
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{value}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
     </div>
   )
 }
@@ -495,7 +495,7 @@ function formatMarkdown(text: string): string {
   
   let result = text
     // Section headers with numbers: **1. RISK ASSESSMENT**
-    .replace(/\*\*(\d+)\.\s*([A-Z][A-Z\s]+)\*\*/g, '<h3 class="font-bold text-[#10B981] text-base mt-4 mb-2 border-b border-[#10B981]/20 pb-1">$2</h3>')
+    .replace(/\*\*(\d+)\.\s*([A-Z][A-Z\s]+)\*\*/g, '<h3 class="font-semibold text-slate-700 dark:text-slate-200 text-base mt-4 mb-2 border-b border-slate-200 dark:border-slate-600 pb-1">$2</h3>')
     // Regular headers
     .replace(/^### (.*?)$/gm, '<h4 class="font-semibold text-base mt-3 mb-1">$1</h4>')
     .replace(/^## (.*?)$/gm, '<h3 class="font-semibold text-lg mt-4 mb-2">$1</h3>')
@@ -506,7 +506,7 @@ function formatMarkdown(text: string): string {
     // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     // Credit recommendation highlight
-    .replace(/(Credit recommendation:.*?)(?=\n|$)/gi, '<span class="block mt-2 p-2 bg-[#10B981]/10 rounded text-[#10B981] font-medium">$1</span>')
+    .replace(/(Credit recommendation:.*?)(?=\n|$)/gi, '<span class="block mt-2 p-2 bg-slate-200/80 dark:bg-slate-700/50 rounded text-slate-700 dark:text-slate-200 font-medium">$1</span>')
     // Emoji preservation
     .replace(/(🚨|⚠️|🔴|🟠|🟢|⚪|📈|📉|✅|❌|💧|🌾|☀️|🌡️|⛔|🌱|💰)/g, '<span class="text-lg inline-block mr-1">$1</span>')
     // Bullet lists (must be before line breaks)

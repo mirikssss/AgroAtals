@@ -1078,51 +1078,6 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
         </div>
       </Card>
 
-      {/* Evidence: p10/p50/p90, drivers, confidence, baseline */}
-      <Card className="p-4 border-border/50">
-        <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Evidence</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Risk scenarios (аномалия урожая, %)</p>
-            <div className="flex gap-4">
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase">Downside</p>
-                <p className="text-lg font-bold text-foreground">P10 {result.p10.toFixed(1)}%</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase">Expected</p>
-                <p className="text-lg font-bold text-foreground">P50 {result.p50.toFixed(1)}%</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase">Upside</p>
-                <p className="text-lg font-bold text-foreground">P90 {result.p90.toFixed(1)}%</p>
-              </div>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Ключевые драйверы</p>
-            <ul className="text-sm text-foreground space-y-0.5">
-              {getResultDrivers(result).map((d) => (
-                <li key={d.label}><span className="font-medium">{d.label}:</span> {d.value}</li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Model reliability</p>
-            <p className="text-xs text-foreground">
-              Coverage P10–P90 = <strong>{modelCard.coverage_p90_p10_pct}%</strong>
-              <br />
-              Downside Miss Rate = <strong>{modelCard.downside_miss_rate_pct}%</strong>
-              <br />
-              <span className="text-muted-foreground">MAE (P50) {modelCard.mae_p50} · RMSE {modelCard.rmse_p50}</span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Evidence: <strong>{modelCard.baseline_years} лет</strong> спутниковых данных
-            </p>
-          </div>
-        </div>
-      </Card>
-
       {/* 3x3 Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* Row 1 */}
@@ -1397,6 +1352,42 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
           />
         </div>
       )}
+
+      {/* Evidence (technical): в конце, стиль в одну линию с карточками графиков */}
+      <Card className="p-4 bg-muted/20 border-border/40 overflow-hidden">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          {t('evidenceTechnicalTitle')}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('evidenceRiskScenarios')}</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="text-sm"><span className="text-muted-foreground">P10</span> <strong className="text-foreground">{result.p10.toFixed(1)}%</strong></span>
+              <span className="text-sm"><span className="text-muted-foreground">P50</span> <strong className="text-foreground">{result.p50.toFixed(1)}%</strong></span>
+              <span className="text-sm"><span className="text-muted-foreground">P90</span> <strong className="text-foreground">{result.p90.toFixed(1)}%</strong></span>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('evidenceKeyDrivers')}</p>
+            <ul className="text-sm text-foreground/90 space-y-0.5">
+              {getResultDrivers(result).map((d) => (
+                <li key={d.label}><span className="text-muted-foreground">{d.label}:</span> {d.value}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('evidenceModelReliability')}</p>
+            <p className="text-xs text-foreground/90">
+              Coverage P10–P90 <strong>{modelCard.coverage_p90_p10_pct}%</strong>
+              {' · '}Downside miss <strong>{modelCard.downside_miss_rate_pct}%</strong>
+              {' · '}MAE {modelCard.mae_p50} RMSE {modelCard.rmse_p50}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Baseline: <strong>{modelCard.baseline_years}</strong> {t('evidenceBaselineYears')}
+            </p>
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }

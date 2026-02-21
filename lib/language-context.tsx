@@ -199,6 +199,11 @@ const translations: Record<Language, Record<string, string>> = {
     chooseCropDesc: 'Specify crop type and growing season',
     runAnalysisDesc: 'Our AI models process satellite data',
     getInsightsDesc: 'Receive risk metrics and confidence bands',
+    evidenceTechnicalTitle: 'Model & evidence (technical)',
+    evidenceRiskScenarios: 'Risk scenarios (yield anomaly, %)',
+    evidenceKeyDrivers: 'Key drivers',
+    evidenceModelReliability: 'Model reliability',
+    evidenceBaselineYears: 'years satellite data',
   },
   ru: {
     dashboard: 'Панель',
@@ -386,6 +391,11 @@ const translations: Record<Language, Record<string, string>> = {
     chooseCropDesc: 'Укажите культуру и сезон',
     runAnalysisDesc: 'ИИ обрабатывает спутниковые данные',
     getInsightsDesc: 'Получите метрики риска и доверительные интервалы',
+    evidenceTechnicalTitle: 'Модель и данные (техническое)',
+    evidenceRiskScenarios: 'Сценарии риска (аномалия урожая, %)',
+    evidenceKeyDrivers: 'Ключевые драйверы',
+    evidenceModelReliability: 'Надёжность модели',
+    evidenceBaselineYears: 'лет спутниковых данных',
   },
   uz: {
     dashboard: 'Bosh sahifa',
@@ -573,6 +583,11 @@ const translations: Record<Language, Record<string, string>> = {
     chooseCropDesc: 'Ekin turi va mavsumni ko\'rsating',
     runAnalysisDesc: 'AI sun\'iy yo\'ldosh ma\'lumotlarini qayta ishlaydi',
     getInsightsDesc: 'Risk metrikalari va ishonch oralig\'ini oling',
+    evidenceTechnicalTitle: 'Model va ma\'lumotlar (texnik)',
+    evidenceRiskScenarios: 'Risk ssenariylari (hosildorlik anomaliyasi, %)',
+    evidenceKeyDrivers: 'Asosiy omillar',
+    evidenceModelReliability: 'Model ishonchliligi',
+    evidenceBaselineYears: 'yil sun\'iy yo\'ldosh ma\'lumotlari',
   },
 }
 

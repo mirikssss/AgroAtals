@@ -375,14 +375,55 @@ def _build_structured_user_prompt(scope: dict, kpi_key: str, kpi_values: dict, m
     return "\n".join(parts)
 
 
-def _explain_kpi_structured_fallback(scope: dict, kpi_key: str, reason: str) -> dict[str, Any]:
-    """Минимальная структура при ошибке или отсутствии ответа Gemini."""
+def _kpi_key_to_card_id(kpi_key: str) -> str:
+    """Маппинг kpi_key (structured) -> card_id (legacy explain_kpi)."""
+    if kpi_key in ("yield_anomaly", "downside_risk", "vegetation_health", "season_stress"):
+        return "yield"
+    if kpi_key in ("high_risk_share", "dscr"):
+        return "portfolio"
+    return "yield"
+
+
+def _build_legacy_metrics_from_structured(scope: dict, kpi_values: dict) -> dict[str, Any]:
+    """Собрать metrics для explain_kpi из scope и kpi_values."""
+    loc = (scope.get("region_id") or scope.get("country") or "National average") or "National average"
+    metrics: dict[str, Any] = {
+        "language": "en",
+        "location": loc,
+        "valueAtRisk": kpi_values.get("value_at_risk") or kpi_values.get("value"),
+        "riskScore": kpi_values.get("risk_score") or kpi_values.get("value"),
+        "yieldAnomaly": kpi_values.get("yield_anomaly") or kpi_values.get("value"),
+        "p10": kpi_values.get("p10"),
+        "p50": kpi_values.get("p50"),
+        "p90": kpi_values.get("p90"),
+        "spread": kpi_values.get("spread"),
+        "confidenceLabel": kpi_values.get("confidence_label") or "",
+    }
+    return metrics
+
+
+def _explain_kpi_structured_fallback(
+    scope: dict, kpi_key: str, reason: str, kpi_values: Optional[dict] = None
+) -> dict[str, Any]:
+    """Минимальная структура при ошибке или отсутствии ответа Gemini. При возможности подставляем текст из legacy explain_kpi."""
     disclaimer = "Check GEMINI_API_KEY and GEMINI_MODEL in ai_service/.env (e.g. GEMINI_MODEL=gemini-2.5-flash)."
+    summary = reason
+    headline = "Data limitation: AI explanation unavailable."
+    if kpi_values is not None:
+        try:
+            card_id = _kpi_key_to_card_id(kpi_key)
+            metrics = _build_legacy_metrics_from_structured(scope, kpi_values)
+            text, is_mock = explain_kpi(card_id, metrics)
+            if text and text.strip():
+                summary = text.strip()
+                headline = "Explanation (fallback from text model)" if is_mock else "Explanation"
+        except Exception as e:
+            logger.debug("explain_kpi fallback failed: %s", e)
     return {
         "title": f"KPI: {kpi_key}",
         "subtitle": f"{scope.get('crop', '')} · {scope.get('year', '')}",
         "badges": [],
-        "hero": {"headline": "Data limitation: AI explanation unavailable.", "summary": reason},
+        "hero": {"headline": headline, "summary": summary},
         "metrics": [],
         "sections": [],
         "table": None,
@@ -413,7 +454,7 @@ def explain_kpi_structured(
         )
     except Exception as e:
         logger.warning("explain_kpi_structured prompts_kpi import failed: %s", e)
-        return _explain_kpi_structured_fallback(scope, kpi_key, f"Config load error: {e}")
+        return _explain_kpi_structured_fallback(scope, kpi_key, f"Config load error: {e}", kpi_values)
 
     meta = meta or {}
     system = SYSTEM_PROMPT_FINANCE if kpi_group == "finance" else SYSTEM_PROMPT_SATELLITE
@@ -451,7 +492,7 @@ def explain_kpi_structured(
         )
     except Exception as e:
         logger.warning("explain_kpi_structured request_id=%s _call_gemini error: %s", request_id, e)
-        return _explain_kpi_structured_fallback(scope, kpi_key, str(e)[:200])
+        return _explain_kpi_structured_fallback(scope, kpi_key, str(e)[:200], kpi_values)
 
     if text:
         parsed = parse_json(text)
@@ -479,4 +520,4 @@ Invalid response:
             logger.warning("explain_kpi_structured request_id=%s repair error: %s", request_id, e)
 
     logger.warning("explain_kpi_structured request_id=%s using fallback", request_id)
-    return _explain_kpi_structured_fallback(scope, kpi_key, "AI did not return valid JSON.")
+    return _explain_kpi_structured_fallback(scope, kpi_key, "AI did not return valid JSON.", kpi_values)

@@ -957,8 +957,10 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
     { name: 'P90', value: result.p90, color: '#10B981' },
   ]
 
+  const resultsCardShadow = 'shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.12),0_12px_40px_8px_rgba(0,0,0,0.18)]'
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-6">
       {/* Header with Asset Name & Status */}
       <div className="space-y-4">
         {/* Top row: Title and buttons */}
@@ -1042,8 +1044,10 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
         onRefresh={aiRecommendation.refresh}
       />
 
+      {/* Cards section: subtle background for a finished look */}
+      <div className="rounded-2xl bg-muted/25 dark:bg-muted/15 border border-border/40 p-6 space-y-6">
       {/* DSCR Summary Card */}
-      <Card className="p-4 bg-gradient-to-r from-primary/5 to-primary/0 border-primary/20">
+      <Card className={`p-5 rounded-xl bg-gradient-to-r from-primary/5 to-primary/0 border border-primary/20 ${resultsCardShadow}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-wrap items-stretch gap-2 sm:gap-4">
             <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
@@ -1133,7 +1137,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
       {/* Evidence Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart 1: NDVI Anomaly Timeline */}
-        <Card className="p-4 lg:col-span-1">
+        <Card className={`p-4 lg:col-span-1 rounded-xl border border-border/60 ${resultsCardShadow}`}>
           <div className="space-y-4">
             <div>
               <h3 className="font-semibold text-foreground">{t('ndviAnomalyTimeline')}</h3>
@@ -1184,7 +1188,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
         </Card>
 
         {/* Chart 2: Banking stress scenarios (P10/P50/P90) */}
-        <Card className="p-4 lg:col-span-1">
+        <Card className={`p-4 lg:col-span-1 rounded-xl border border-border/60 ${resultsCardShadow}`}>
           <div className="space-y-4">
             <div>
               <h3 className="font-semibold text-foreground">{t('yieldScenarioBand')}</h3>
@@ -1226,7 +1230,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
         </Card>
 
         {/* Chart 3: Precip vs Vegetation Dual-Axis */}
-        <Card className="p-4 lg:col-span-1">
+        <Card className={`p-4 lg:col-span-1 rounded-xl border border-border/60 ${resultsCardShadow}`}>
           <div className="space-y-4">
             <div>
               <h3 className="font-semibold text-foreground">{t('precipVsVegetation')}</h3>
@@ -1331,7 +1335,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
               setFieldAdded(true)
               onAddField()
             }}
-            className="w-full py-6 text-lg font-semibold bg-[#10B981] text-white hover:bg-[#059669] shadow-lg hover:shadow-xl transition-all"
+            className="w-full py-6 text-lg font-semibold rounded-xl bg-[#10B981] text-white hover:bg-[#059669] shadow-[0_4px_24px_4px_rgba(16,185,129,0.25),0_12px_40px_8px_rgba(0,0,0,0.1)] hover:shadow-[0_8px_32px_8px_rgba(16,185,129,0.3)] transition-all"
           >
             <MapPin className="w-5 h-5 mr-2" />
             {t('addFieldToTracking')}
@@ -1354,7 +1358,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
       )}
 
       {/* Evidence (technical): в конце, стиль в одну линию с карточками графиков */}
-      <Card className="p-4 bg-muted/20 border-border/40 overflow-hidden">
+      <Card className={`p-4 rounded-xl bg-muted/20 border border-border/40 overflow-hidden ${resultsCardShadow}`}>
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           {t('evidenceTechnicalTitle')}
         </h3>
@@ -1388,6 +1392,7 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
           </div>
         </div>
       </Card>
+      </div>
     </div>
   )
 }
@@ -1417,8 +1422,9 @@ function MetricCard({ title, value, subtitle, icon, color, highlight }: MetricCa
     red: 'bg-red-50 dark:bg-red-950/30',
   }
 
+  const cardShadow = 'shadow-[0_4px_24px_4px_rgba(0,0,0,0.06),0_12px_40px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_4px_rgba(0,0,0,0.12),0_12px_40px_8px_rgba(0,0,0,0.18)]'
   return (
-    <Card className={`p-4 border shadow-sm transition-all hover:shadow-md ${
+    <Card className={`p-4 rounded-xl border transition-all hover:shadow-[0_8px_32px_8px_rgba(0,0,0,0.08)] ${cardShadow} ${
       highlight ? `border-${color === 'red' ? 'red' : 'orange'}-300 dark:border-${color === 'red' ? 'red' : 'orange'}-800 ${bgClasses[color]}` : 'border-border/50'
     }`}>
       <div className="space-y-2">

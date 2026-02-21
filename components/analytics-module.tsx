@@ -47,6 +47,7 @@ import {
   Download,
   MoreVertical,
   SlidersHorizontal,
+  HelpCircle,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -60,6 +61,8 @@ import {
   DialogTitle,
   DialogHeader,
 } from '@/components/ui/dialog'
+import { KpiExplainModal } from '@/components/KpiExplainModal'
+import type { KpiExplainStructuredResponse } from '@/lib/kpi-explain-types'
 import { useLanguage } from '@/lib/language-context'
 import { 
   useAIRecommendation, 
@@ -925,6 +928,10 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
   const [chartData, setChartData] = useState<ChartDataState>(emptyChartData)
   const [fieldAdded, setFieldAdded] = useState(false)
   const [modelCard, setModelCard] = useState<ModelCard>(DEFAULT_MODEL_CARD)
+  const [explainDscrOpen, setExplainDscrOpen] = useState(false)
+  const [explainDscrLoading, setExplainDscrLoading] = useState(false)
+  const [explainDscrError, setExplainDscrError] = useState<string | null>(null)
+  const [explainDscrData, setExplainDscrData] = useState<KpiExplainStructuredResponse | null>(null)
   const userName = user?.name || user?.email?.split('@')[0] || 'user'
   const bounds = loanParams?.drawnArea?.bounds
   const centerLat = bounds ? ((bounds.north + bounds.south) / 2).toFixed(4) : '0'
@@ -951,6 +958,41 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
       .then((data: ChartDataState) => setChartData(data))
       .catch(() => setChartData(emptyChartData))
   }, [result.assetName, result.district, result.region])
+
+  const handleDscrExplainClick = useCallback(async () => {
+    setExplainDscrOpen(true)
+    setExplainDscrError(null)
+    setExplainDscrData(null)
+    setExplainDscrLoading(true)
+    const regionLevel = result.district?.trim() ? 'district' : result.region?.trim() ? 'oblast' : 'country'
+    const regionId = result.district?.trim() || result.region?.trim() || null
+    const scope = {
+      country: 'UZB',
+      region_level: regionLevel,
+      region_id: regionId,
+      crop,
+      year: new Date().getFullYear(),
+    }
+    const kpi_values = {
+      p50: result.dscr,
+      annual_debt_service: result.annualDebtService,
+      expected_revenue: result.expectedRevenue,
+    }
+    try {
+      const res = await fetch(`${DASHBOARD_API_URL}/dashboard/kpi-explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kpi_group: 'finance', kpi_key: 'dscr', scope, kpi_values }),
+      })
+      if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`)
+      const data: KpiExplainStructuredResponse = await res.json()
+      setExplainDscrData(data)
+    } catch (e) {
+      setExplainDscrError(e instanceof Error ? e.message : 'Failed to load explanation')
+    } finally {
+      setExplainDscrLoading(false)
+    }
+  }, [result.dscr, result.annualDebtService, result.expectedRevenue, result.district, result.region, crop])
 
   // Fetch model card (coverage, downside miss rate, MAE/RMSE, baseline years)
   useEffect(() => {
@@ -1157,41 +1199,59 @@ function ResultsPhase({ result, onReset, language, loanParams, onAddField }: Res
 
       {/* Cards section: subtle background for a finished look */}
       <div className="rounded-2xl bg-muted/25 dark:bg-muted/15 border border-border/40 p-6 space-y-6">
-      {/* DSCR Summary Card */}
-      <Card className={`p-5 rounded-xl bg-gradient-to-r from-primary/5 to-primary/0 border border-primary/20 ${resultsCardShadow}`}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-wrap items-stretch gap-2 sm:gap-4">
-            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">DSCR</p>
-              <p className={`text-2xl font-bold ${
-                result.dscr >= 1.25 ? 'text-[#10B981]' : result.dscr >= 1.0 ? 'text-orange-600' : 'text-red-600'
+      {/* DSCR Summary Card — клик открывает AI-объяснение как у KPI карточек */}
+      <Card
+        className={`p-5 rounded-xl bg-gradient-to-r from-primary/5 to-primary/0 border border-primary/20 ${resultsCardShadow} cursor-pointer transition-all hover:shadow-[0_8px_32px_8px_rgba(0,0,0,0.08)] hover:border-primary/30`}
+        onClick={handleDscrExplainClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDscrExplainClick() } }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-baseline gap-6 sm:gap-8">
+            <div className="flex flex-col gap-0.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">DSCR</p>
+              <p className={`text-2xl sm:text-3xl font-bold tabular-nums ${
+                result.dscr >= 1.25 ? 'text-[#10B981]' : result.dscr >= 1.0 ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
               }`}>
                 {result.dscr.toFixed(2)}x
               </p>
             </div>
-            <div className="text-center px-3 sm:px-4 border-b sm:border-b-0 sm:border-r border-border/50">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('annualDebtService')}</p>
-              <p className="text-xl font-bold text-foreground">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('annualDebtService')}</p>
+              <p className="text-lg sm:text-xl font-bold text-foreground tabular-nums">${result.annualDebtService.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
-            <div className="text-center px-3 sm:px-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('expectedRevenue')}</p>
-              <p className="text-xl font-bold text-foreground">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('expectedRevenue')}</p>
+              <p className="text-lg sm:text-xl font-bold text-foreground tabular-nums">${result.expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
             </div>
           </div>
-          <div className={`px-4 py-2 rounded-lg w-full sm:w-auto ${
-            result.dscr >= 1.25
-              ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300'
-              : result.dscr >= 1.0
-              ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300'
-              : 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300'
-          }`}>
-            <span className="text-xs font-medium uppercase tracking-wide opacity-90">{t('creditRiskLabel')}</span>
-            <span className="block font-medium">
-              {result.dscr >= 1.25 ? t('creditworthy') : result.dscr >= 1.0 ? t('marginal') : t('highDefaultRisk')}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className={`px-4 py-2.5 rounded-lg ${
+              result.dscr >= 1.25
+                ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300'
+                : result.dscr >= 1.0
+                ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300'
+                : 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300'
+            }`}>
+              <span className="text-xs font-semibold uppercase tracking-wider opacity-90">{t('creditRiskLabel')}</span>
+              <span className="block text-sm font-bold mt-0.5">
+                {result.dscr >= 1.25 ? t('creditworthy') : result.dscr >= 1.0 ? t('marginal') : t('highDefaultRisk')}
+              </span>
+            </div>
+            <HelpCircle className="w-5 h-5 text-muted-foreground shrink-0" aria-hidden />
           </div>
         </div>
       </Card>
+      <KpiExplainModal
+        open={explainDscrOpen}
+        onOpenChange={setExplainDscrOpen}
+        loading={explainDscrLoading}
+        error={explainDscrError}
+        data={explainDscrData}
+        onRetry={handleDscrExplainClick}
+        cardTitle="DSCR"
+      />
 
       {/* 3x3 Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
